@@ -1,0 +1,41 @@
+### macOS
+.DS_Store
+
+### Node / Electron (typowe foldery, wszystko w środku ignorowane)
+node_modules/
+dist/
+build/
+out/
+release/
+coverage/
+
+### Cache / temp (wszystko w środku ignorowane)
+.cache/
+tmp/
+temp/
+logs/
+
+### IDE / edytory
+.vscode/
+.idea/
+
+### Logi
+*.log
+
+### Sekrety / lokalne konfigi (pojedyncze pliki)
+.env
+.env.*
+
+### Twoje WYBRANE foldery do ignorowania (wpisz swoje nazwy)
+BACKUP_DB/
+pic_mini/
+pic_max/
+FILES/
+stare_pliki/
+BACKUP_MOCKUP_TEST/
+CD_TEMPLATE/
+DATABASE/
+BOOKLET/
+FORMAT/
+icons/
+LABELS/
