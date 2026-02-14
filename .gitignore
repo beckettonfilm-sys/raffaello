@@ -38,6 +38,6 @@ DATABASE/
 BOOKLET/
 FORMAT/
 icons/
-LABELS/Raffaello.command
 LABELS/
 db.config.json
+Raffaello.command
