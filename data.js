@@ -1278,11 +1278,21 @@ class DataStore {
 
   setLabelHierarchy(labelsHierarchy = []) {
     const before = new Set(LABEL_MAP.keys());
+    const previousSelection = new Set(this.selectedLabels || []);
+    const hadAllBefore =
+      before.size > 0 &&
+      previousSelection.size === before.size &&
+      Array.from(before).every((label) => previousSelection.has(label));
+
     setLabelHierarchy(labelsHierarchy);
     const next = new Set(LABEL_MAP.keys());
-    const nextSelection = new Set(
-      Array.from(this.selectedLabels || []).filter((label) => next.has(label))
-    );
+    // Previous logic always intersected previous selection with the new label list,
+    // which dropped freshly added labels even when the user had "select all" enabled.
+    // Keep full selection when all labels were selected before refresh; otherwise keep partial intersection.
+    const nextSelection = hadAllBefore
+      ? new Set(next)
+      : new Set(Array.from(previousSelection).filter((label) => next.has(label)));
+
     if (!nextSelection.size) {
       next.forEach((label) => nextSelection.add(label));
     }
