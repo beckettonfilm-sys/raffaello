@@ -1,5 +1,0 @@
-nowy kurwa plik do testow
-
-Kawał:
-Dlaczego programista nie lubi natury?
-Bo ma za dużo bugów, a za mało feature'ów.
