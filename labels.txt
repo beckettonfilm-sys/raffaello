@@ -1,0 +1,46 @@
+01A - ECM New Series
+02A - Deutsche Grammophon (DG)
+03A - Chandos
+04A - Sony Classical
+05A - Decca Music Group Ltd.
+06A - Harmonia mundi
+07A - Alpha Classics
+08A - PENTATONE
+09A - Channel Classics
+10B - Hyperion
+11B - BIS
+12B - Warner Classics / Erato
+13B - Delphian Records
+14B - Lawo Classics
+15B - Naxos
+16B - Signum Records
+17B - LSO Live
+18B - Berlin Classics
+19C - Aparté
+20C - Orchid Classics
+21C - Fuga Libera
+22C - Ondine
+23C - Evidence Classics
+24C - Navona
+25C - Ricercar
+26C - Arcana
+27C - Nonesuch
+28C - Linn Records
+29C - AVIE Records
+30C - Naive
+31C - Rubicon
+32C - Mirare
+33C - CPO
+34C - Brilliant Classics
+35C - Capriccio
+36C - BR-Klassik
+37C - Resonus Classics
+38C - Onyx Classics
+39C - First Hand Records
+40C - Piano Classics
+41C - Hänssler CLASSIC
+42C - Grand Piano
+43C - Bright Shiny Things
+44C - RCA Red Seal
+45C - London Philharmonic Orchestra
+99Z - unknown

@@ -1,0 +1,48 @@
+01 - TIDAL streaming
+02 - TIDAL 16-bit/44,1 kHz 
+03 - TIDAL 16-bit/48 kHz
+04 - TIDAL 24-bit/44,1 kHz
+05 - TIDAL 24-bit/48 kHz
+06 - TIDAL 24-bit/88,2 kHz
+07 - TIDAL 24-bit/96 kHz
+08 - TIDAL 24-bit/176,4 kHz
+09 - TIDAL 24-bit/192 kHz
+10 - TIDAL Dolby Atmos
+11 - TIDAL Sony 360 Reality Audio
+12 - FLAC 16-bit/44,1 kHz
+13 - FLAC 16-bit/48 kHz
+14 - FLAC 16-bit/88,2 kHz
+15 - FLAC 16-bit/96 kHz
+16 - FLAC 16-bit/176,4 kHz
+17 - FLAC 16-bit/192 kHz
+18 - FLAC 24-bit/44,1 kHz
+19 - FLAC 24-bit/48 kHz
+20 - FLAC 24-bit/88,2 kHz
+21 - FLAC 24-bit/96 kHz
+22 - FLAC 24-bit/176,4 kHz
+23 - FLAC 24-bit/192 kHz
+24 - DXD 24-bit/352,8 kHz
+25 - DXD 24-bit/384 kHz
+26 - DXD 32-bit/352,8 kHz
+27 - DXD 32-bit/384 kHz
+28 - DSD64 1-bit/2,8224 MHz
+29 - DSD128 1-bit/5,6448 MHz
+30 - DSD256 1-bit/11,2896 MHz
+31 - DSD512 1-bit/22,5792 MHz
+32 - DSD1024 1-bit/45,1584 MHz
+33 - DSD64 1-bit/3,072 MHz
+34 - DSD128 1-bit/6,144 MHz
+35 - DSD256 1-bit/12,288 MHz
+36 - DSD512 1-bit/24,576 MHz
+37 - DSD1024 1-bit/49,152 MHz
+38 - MQA 16-bit/44,1 kHz
+39 - MQA 24-bit/44,1 kHz
+40 - MQA 24-bit/48 kHz
+41 - MQA 24-bit/88,2 kHz
+42 - MQA 24-bit/96 kHz
+43 - MQA 24-bit/176,4 kHz
+44 - MQA 24-bit/192 kHz
+45 - MQA 24-bit/352,8 kHz
+46 - MQA 24-bit/384 kHz
+
+
