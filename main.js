@@ -1242,6 +1242,7 @@ function registerHandlers() {
         FAVORITE: 0,
         RATING: 0,
         BOOKLET: 0,
+        CD_BACK: 0,
         LABEL: "unknown",
         TIDAL_LINK: link,
         FORMAT: "TIDAL streaming",

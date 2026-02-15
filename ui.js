@@ -4320,9 +4320,47 @@ class UiController {
         this.updateSwitchLabels(bookletSwitch.input, bookletSwitch.leftLabel, bookletSwitch.rightLabel);
       });
 
+      const cdBackSwitch = this.createSwitch({
+        leftLabel: "OFF",
+        rightLabel: "ON",
+        defaultRight: Boolean(album.cd_back),
+        compact: true
+      });
+      this.updateSwitchLabels(cdBackSwitch.input, cdBackSwitch.leftLabel, cdBackSwitch.rightLabel);
+      cdBackSwitch.input.addEventListener("change", async () => {
+        const wasEnabled = cdBackSwitch.input.dataset.prevChecked === "1";
+        const isEnabled = cdBackSwitch.input.checked;
+        this.updateSwitchLabels(cdBackSwitch.input, cdBackSwitch.leftLabel, cdBackSwitch.rightLabel);
+        cdBackSwitch.input.dataset.prevChecked = isEnabled ? "1" : "";
+        if (wasEnabled || !isEnabled) return;
+        await this.ensureAppDirectory();
+        const filePath = this.getCdBackFilePath(album);
+        if (!filePath) return;
+        try {
+          const exists = await checkFileExists({ filePath });
+          if (!exists) {
+            this.showStatusMessage("Brak CD BACK dla wybranego albumu.");
+          }
+        } catch (error) {
+          console.warn("Nie udało się sprawdzić pliku CD BACK:", error);
+        }
+      });
+      cdBackSwitch.input.dataset.prevChecked = cdBackSwitch.input.checked ? "1" : "";
+
+      const switchesRow = document.createElement("div");
+      switchesRow.className = "modal-inline-switches";
+      const bookletWrap = document.createElement("div");
+      bookletWrap.className = "modal-inline-switches__item";
+      bookletWrap.appendChild(buildRow("BOOKLET", bookletSwitch.wrapper));
+      const cdBackWrap = document.createElement("div");
+      cdBackWrap.className = "modal-inline-switches__item";
+      cdBackWrap.appendChild(buildRow("CD BACK", cdBackSwitch.wrapper));
+      switchesRow.appendChild(bookletWrap);
+      switchesRow.appendChild(cdBackWrap);
+
       form.appendChild(buildRow("ROON ID", roonIdField.wrap));
       form.appendChild(buildRow("LABEL", labelWrap));
-      form.appendChild(buildRow("BOOKLET", bookletSwitch.wrapper));
+      form.appendChild(switchesRow);
       form.appendChild(buildRow("FORMAT", formatField.wrap));
       form.appendChild(buildRow("TITLE Raffaello", titleRaffaelloField.wrap));
       form.appendChild(buildRow("ARTIST Raffaello", artistRaffaelloField.wrap));
@@ -4430,7 +4468,8 @@ class UiController {
           release_original: nextRelease || 0,
           picture: pictureField.input.value.trim(),
           label: labelSelect.value || album.label || "",
-          booklet: bookletSwitch.input.checked ? 1 : 0
+          booklet: bookletSwitch.input.checked ? 1 : 0,
+          cd_back: cdBackSwitch.input.checked ? 1 : 0
         };
         const { changed } = this.store.updateAlbumData(album, updates);
         if (changed) {
@@ -5261,6 +5300,39 @@ class UiController {
     return encodeURI(`${prefix}${normalized}`);
   }
 
+  getCdBackTemplateFileName(album) {
+    const formatLabel = this.resolveFormatLabel(album?.format || "");
+    const rawFormatCode = this.resolveFormatCode(formatLabel);
+    const normalizedCode = String(rawFormatCode || "00").padStart(2, "0");
+    return `cd_back_format_${normalizedCode}.jpg`;
+  }
+
+  getCdBackFileName(album) {
+    const id = Number(album?.id_albumu);
+    if (!Number.isFinite(id) || id <= 0) return "";
+    return `back_${id}.jpg`;
+  }
+
+  getCdBackFilePath(album) {
+    if (!this.uiState.appDirectory) return "";
+    const fileName = this.getCdBackFileName(album);
+    if (!fileName) return "";
+    return buildPath(this.uiState.appDirectory, "FILES/CD_BACK", fileName);
+  }
+
+  getCdBackImageSources(album) {
+    const templateFile = this.getCdBackTemplateFileName(album);
+    const templateUrl = this.getLocalImageUrl("CD_TEMPLATE", templateFile);
+    const backFile = this.getCdBackFileName(album);
+    const backUrl = backFile ? this.getLocalImageUrl("FILES/CD_BACK", backFile) : "";
+    const usesBack = Number(album?.cd_back) > 0 && Boolean(backUrl);
+    return {
+      preferred: usesBack ? backUrl : templateUrl,
+      template: templateUrl,
+      usesBack
+    };
+  }
+
   getBookletFileName(album) {
     const id = Number(album?.id_albumu);
     if (!Number.isFinite(id) || id <= 0) return "";
@@ -5499,14 +5571,30 @@ class UiController {
     const img = document.createElement("img");
     img.className = "album-cover";
     const { src: coverSrc, fallback: coverFallback } = this.getAlbumCoverUrl(album, { size: "mini" });
-    img.src = coverSrc;
-    img.dataset.fallbackApplied = "";
-    img.dataset.fallbackSrc = coverFallback;
-    img.addEventListener("error", () => {
-      if (img.dataset.fallbackApplied) return;
-      img.dataset.fallbackApplied = "true";
-      img.src = coverFallback;
-    });
+    const { preferred: cdBackSrc, template: cdBackTemplate, usesBack: cdBackUsesBack } = this.getCdBackImageSources(album);
+    const applyMiniCover = () => {
+      img.dataset.imageMode = "mini";
+      img.dataset.fallbackApplied = "";
+      img.onerror = () => {
+        if (img.dataset.fallbackApplied) return;
+        img.dataset.fallbackApplied = "true";
+        img.src = coverFallback;
+      };
+      img.src = coverSrc;
+    };
+    const applyCdBackCover = () => {
+      img.dataset.imageMode = "cd_back";
+      img.dataset.fallbackApplied = "";
+      img.onerror = () => {
+        if (img.dataset.fallbackApplied) return;
+        img.dataset.fallbackApplied = "true";
+        if (!cdBackUsesBack) return;
+        img.onerror = null;
+        img.src = cdBackTemplate;
+      };
+      img.src = cdBackSrc;
+    };
+    applyMiniCover();
     if (album.selector === "X") img.classList.add("grayscale");
 
     const coverWrap = document.createElement("div");
@@ -5642,9 +5730,11 @@ class UiController {
     });
 
     card.addEventListener("mouseenter", () => {
+      applyCdBackCover();
       if (album.selector === "X") img.classList.remove("grayscale");
     });
     card.addEventListener("mouseleave", () => {
+      applyMiniCover();
       if (album.selector === "X") img.classList.add("grayscale");
     });
 
