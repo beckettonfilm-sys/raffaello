@@ -295,6 +295,10 @@ class DataStore {
     const bookletValue =
       bookletRaw === true ? 1 : bookletRaw === false ? 0 : Number.parseInt(bookletRaw, 10);
     const booklet = Number.isFinite(bookletValue) && bookletValue > 0 ? 1 : 0;
+    const cdBackRaw = row.CD_BACK ?? row.cd_back ?? row.cdBack ?? 0;
+    const cdBackValue =
+      cdBackRaw === true ? 1 : cdBackRaw === false ? 0 : Number.parseInt(cdBackRaw, 10);
+    const cd_back = Number.isFinite(cdBackValue) && cdBackValue > 0 ? 1 : 0;
     const artistTidal = String(row.ARTIST_TIDAL ?? row.ARTIST ?? "");
     const titleTidal = String(row.TITLE_TIDAL ?? row.TITLE ?? "");
     const artistRaffaello = String(row.ARTIST_RAFFAELLO ?? row.ARTIST ?? artistTidal ?? "");
@@ -327,6 +331,7 @@ class DataStore {
       release_date: releaseDate,
       update_ts: Number.isFinite(updateTs) && updateTs > 0 ? updateTs : null,
       booklet,
+      cd_back,
       release_original: row.RELEASE_DATE
     };
   }
@@ -1343,7 +1348,8 @@ class DataStore {
         DURATION: rec.duration || 0,
         RELEASE_DATE: releaseValue,
         UPDATE_TS: rec.update_ts || null,
-        BOOKLET: rec.booklet ? 1 : 0
+        BOOKLET: rec.booklet ? 1 : 0,
+        CD_BACK: rec.cd_back ? 1 : 0
       };
     });
   }

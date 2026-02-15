@@ -544,6 +544,17 @@ body::-webkit-scrollbar {
   min-width: 120px;
 }
 
+.modal-inline-switches {
+  display: flex;
+  gap: 12px;
+  width: 100%;
+}
+
+.modal-inline-switches__item {
+  flex: 1;
+  min-width: 0;
+}
+
 .modal-actions {
   display: flex;
   justify-content: flex-end;

@@ -182,6 +182,7 @@ async function migrateAlbumsTable(db, columnSet) {
       rating INTEGER NOT NULL DEFAULT 0,
       update_ts INTEGER NULL,
       booklet INTEGER NOT NULL DEFAULT 0,
+      cd_back INTEGER NOT NULL DEFAULT 0,
       updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
     )`
   );
@@ -209,6 +210,7 @@ async function migrateAlbumsTable(db, columnSet) {
   const ratingExpr = getCol("rating", "0");
   const updateTsExpr = getCol("update_ts", "NULL");
   const bookletExpr = getCol("booklet", "0");
+  const cdBackExpr = getCol("cd_back", "0");
   const updatedExpr = getCol("updated_at", "CURRENT_TIMESTAMP");
 
   await run(
@@ -236,6 +238,7 @@ async function migrateAlbumsTable(db, columnSet) {
       rating,
       update_ts,
       booklet,
+      cd_back,
       updated_at
     )
     SELECT
@@ -261,6 +264,7 @@ async function migrateAlbumsTable(db, columnSet) {
       ${ratingExpr},
       ${updateTsExpr},
       ${bookletExpr},
+      ${cdBackExpr},
       ${updatedExpr}
     FROM "${TABLE_NAME}"`
   );
@@ -314,6 +318,7 @@ async function ensureSchema() {
         rating INTEGER NOT NULL DEFAULT 0,
         update_ts INTEGER NULL,
         booklet INTEGER NOT NULL DEFAULT 0,
+        cd_back INTEGER NOT NULL DEFAULT 0,
         updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
     )`
   );
@@ -331,6 +336,9 @@ async function ensureSchema() {
   }
   if (!refreshedSet.has("booklet")) {
     await run(db, `ALTER TABLE "${TABLE_NAME}" ADD COLUMN booklet INTEGER NOT NULL DEFAULT 0`);
+  }
+  if (!refreshedSet.has("cd_back")) {
+    await run(db, `ALTER TABLE "${TABLE_NAME}" ADD COLUMN cd_back INTEGER NOT NULL DEFAULT 0`);
   }
   if (!refreshedSet.has("rating")) {
     await run(db, `ALTER TABLE "${TABLE_NAME}" ADD COLUMN rating INTEGER NOT NULL DEFAULT 0`);
@@ -476,7 +484,8 @@ const COLUMN_MAP = [
   { field: "DURATION", column: "duration" },
   { field: "RELEASE_DATE", column: "release_date" },
   { field: "UPDATE_TS", column: "update_ts" },
-  { field: "BOOKLET", column: "booklet" }
+  { field: "BOOKLET", column: "booklet" },
+  { field: "CD_BACK", column: "cd_back" }
 ];
 
 function normalizeValue(column, value) {
@@ -491,6 +500,7 @@ function normalizeValue(column, value) {
     column === "id_albumu" ||
     column === "update_ts" ||
     column === "booklet" ||
+    column === "cd_back" ||
     column === "rating"
   ) {
     const numeric = Number(value);
@@ -539,6 +549,8 @@ function resolveRecordField(record = {}, field) {
       return getValue(["CATALOG_NUMBER", "catalog_number", "catalogNumber"]);
     case "BOOKLET":
       return getValue(["BOOKLET", "booklet"]) ?? 0;
+    case "CD_BACK":
+      return getValue(["CD_BACK", "cd_back", "cdBack"]) ?? 0;
     case "RATING":
       return getValue(["RATING", "rating"]) ?? 0;
     default: {
