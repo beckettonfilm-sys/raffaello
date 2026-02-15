@@ -612,6 +612,16 @@ async function ensureDirectory(dirPath) {
 
 let mainWindow;
 let allowAppClose = false;
+let quitRequested = false;
+
+function canSendToRenderer(windowRef) {
+  return Boolean(
+    windowRef &&
+      !windowRef.isDestroyed() &&
+      windowRef.webContents &&
+      !windowRef.webContents.isDestroyed()
+  );
+}
 
 function buildExportSummary({ total, schemaMs, dbMs, xlsxMs, overallMs, fileName }) {
   const lines = [
@@ -712,11 +722,24 @@ async function createWindow() {
 
   mainWindow.maximize();
   allowAppClose = false;
+  quitRequested = false;
 
   mainWindow.on("close", (event) => {
     if (allowAppClose) return;
     event.preventDefault();
-    mainWindow.webContents.send("app-close-request");
+
+    if (canSendToRenderer(mainWindow)) {
+      mainWindow.webContents.send("app-close-request");
+      return;
+    }
+
+    allowAppClose = true;
+    quitRequested = true;
+    app.quit();
+  });
+
+  mainWindow.on("closed", () => {
+    mainWindow = null;
   });
 
   if (process.platform !== "darwin") {
@@ -1445,13 +1468,42 @@ function registerHandlers() {
 
   ipcMain.on("app-close-confirmed", () => {
     allowAppClose = true;
-    if (mainWindow) {
+
+    if (canSendToRenderer(mainWindow) && mainWindow.webContents.isDevToolsOpened()) {
+      try {
+        mainWindow.webContents.closeDevTools();
+      } catch (error) {
+        // Ignorujemy błędy przy zamykaniu DevTools podczas kończenia aplikacji.
+      }
+    }
+
+    if (quitRequested) {
+      app.quit();
+      return;
+    }
+
+    if (mainWindow && !mainWindow.isDestroyed()) {
       mainWindow.close();
     } else {
       app.quit();
     }
   });
 }
+
+app.on("before-quit", (event) => {
+  if (allowAppClose) return;
+
+  quitRequested = true;
+  event.preventDefault();
+
+  if (canSendToRenderer(mainWindow)) {
+    mainWindow.webContents.send("app-close-request");
+    return;
+  }
+
+  allowAppClose = true;
+  app.quit();
+});
 
 app.whenReady().then(async () => {
   if (process.platform !== "darwin") {
@@ -1471,7 +1523,7 @@ app.whenReady().then(async () => {
 });
 
 app.on("window-all-closed", () => {
-  if (process.platform !== "darwin") {
+  if (process.platform !== "darwin" || quitRequested || allowAppClose) {
     app.quit();
   }
 });
