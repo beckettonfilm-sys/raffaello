@@ -612,6 +612,36 @@ async function ensureDirectory(dirPath) {
 
 let mainWindow;
 let allowAppClose = false;
+let quitRequested = false;
+let closeInProgress = false;
+let closeTimeout = null;
+let hardExitTimeout = null;
+const CLOSE_FAILSAFE_TIMEOUT_MS = 8000;
+
+function clearCloseTimeout() {
+  if (!closeTimeout) return;
+  clearTimeout(closeTimeout);
+  closeTimeout = null;
+}
+
+function quitApplicationWithFallback() {
+  allowAppClose = true;
+  clearCloseTimeout();
+  app.quit();
+  if (hardExitTimeout) return;
+  hardExitTimeout = setTimeout(() => {
+    app.exit(0);
+  }, 1500);
+}
+
+function requestRendererAppClose() {
+  if (closeInProgress) return true;
+  if (!mainWindow || mainWindow.isDestroyed()) return false;
+  if (!mainWindow.webContents || mainWindow.webContents.isDestroyed()) return false;
+  closeInProgress = true;
+  mainWindow.webContents.send("app-close-request");
+  return true;
+}
 
 function buildExportSummary({ total, schemaMs, dbMs, xlsxMs, overallMs, fileName }) {
   const lines = [
@@ -712,11 +742,21 @@ async function createWindow() {
 
   mainWindow.maximize();
   allowAppClose = false;
+  quitRequested = false;
+  closeInProgress = false;
+  clearCloseTimeout();
 
   mainWindow.on("close", (event) => {
     if (allowAppClose) return;
     event.preventDefault();
-    mainWindow.webContents.send("app-close-request");
+    const requested = requestRendererAppClose();
+    if (!requested && quitRequested) {
+      quitApplicationWithFallback();
+    }
+  });
+
+  mainWindow.on("closed", () => {
+    mainWindow = null;
   });
 
   if (process.platform !== "darwin") {
@@ -1444,14 +1484,38 @@ function registerHandlers() {
   });
 
   ipcMain.on("app-close-confirmed", () => {
+    clearCloseTimeout();
+    closeInProgress = false;
     allowAppClose = true;
-    if (mainWindow) {
-      mainWindow.close();
-    } else {
-      app.quit();
+
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      const { webContents } = mainWindow;
+      if (webContents && !webContents.isDestroyed() && webContents.isDevToolsOpened()) {
+        webContents.closeDevTools();
+      }
     }
+
+    quitRequested = true;
+    quitApplicationWithFallback();
   });
 }
+
+app.on("before-quit", (event) => {
+  if (allowAppClose) return;
+  quitRequested = true;
+  event.preventDefault();
+
+  const requested = requestRendererAppClose();
+  if (!requested) {
+    quitApplicationWithFallback();
+    return;
+  }
+
+  clearCloseTimeout();
+  closeTimeout = setTimeout(() => {
+    quitApplicationWithFallback();
+  }, CLOSE_FAILSAFE_TIMEOUT_MS);
+});
 
 app.whenReady().then(async () => {
   if (process.platform !== "darwin") {
@@ -1471,7 +1535,7 @@ app.whenReady().then(async () => {
 });
 
 app.on("window-all-closed", () => {
-  if (process.platform !== "darwin") {
-    app.quit();
+  if (process.platform !== "darwin" || quitRequested || allowAppClose) {
+    quitApplicationWithFallback();
   }
 });
