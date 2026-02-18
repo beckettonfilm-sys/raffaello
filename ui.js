@@ -102,6 +102,98 @@ const SELECTOR_STYLES = {
 
 const SELECTOR_VALUES = Object.keys(SELECTOR_LABELS);
 
+const INFO_SHORTCUTS = [
+  {
+    section: "Albumy / karta albumu",
+    items: [
+      "LPM na albumie — otwiera album (embed TIDAL) w nowej karcie.",
+      "PPM na albumie — otwiera album w aplikacji TIDAL i ustawia selektor albumu.",
+      "Przytrzymaj I — pokazuje badge z ID albumu na kartach.",
+      "Q — włącza/wyłącza widoczność ocen (RATING).",
+      "1–5 + LPM (na albumie) — ustawia ocenę 1–5 gwiazdek.",
+      "1–5 + PPM (na albumie) — czyści ocenę (ustawia 0).",
+      "F + LPM (na albumie) — dodaje album do ulubionych.",
+      "F + PPM (na albumie) — usuwa album z ulubionych.",
+      "C + LPM (na albumie) — kopiuje szczegóły albumu do schowka.",
+      "C + PPM (na albumie) — kopiuje sam tytuł albumu do schowka.",
+      "ALT + LPM (na albumie) — otwiera okno EDYCJA DANYCH.",
+      "D + LPM (na albumie) — usuwa album.",
+      "CTRL + LPM (na albumie) — zwiększa licznik HEARD.",
+      "CTRL + PPM (na albumie) — zmniejsza licznik HEARD.",
+      "SHIFT + klik (na albumie, tryb folderów) — przypisuje album do wybranego folderu.",
+      "SHIFT + PPM (na albumie, tryb folderów) — usuwa przypisanie albumu z folderu.",
+      "SHIFT + klik (w folderze zaczynającym się cyfrą) — przypisuje album i automatycznie ustawia selektor K + zwiększa HEARD.",
+      "SHIFT + PPM (na albumie, tryb REMIX) — usuwa album z folderu REMIX i odblokowuje go.",
+      "B + LPM (na albumie, tryb REMIX) — blokuje album w aktualnym folderze REMIX.",
+      "B + PPM (na albumie, tryb REMIX) — odblokowuje album w folderze REMIX.",
+      "O + LPM (na albumie) — otwiera podgląd okładki.",
+      "O + PPM (na albumie) — otwiera źródło okładki.",
+      "Najedź kursorem na okładkę — podmiana miniatury na CD_BACK (gdy tryb CD_BACK jest aktywny).",
+      "Kliknij ikonę labela na karcie albumu — przełącza selektor N/X/F/K/O.",
+      "Kliknij ikonę formatu na karcie albumu — kopiuje Roon ID do schowka.",
+      "Kliknij ikonę bookletu na karcie albumu — otwiera podgląd PDF bookletu.",
+      "Kliknij/PPM na pełnoekranowym podglądzie okładki lub bookletu — zamyka podgląd."
+    ]
+  },
+  {
+    section: "Wyszukiwanie i filtry",
+    items: [
+      "R — losuje ponownie układ albumów w trybie REMIX.",
+      "CLEAR (w sekcjach filtrów) — resetuje aktywne ustawienia danej sekcji.",
+      "LPM na przyciskach miesięcy / dekad / lat w filtrach dat — przechodzi do kolejnej wartości.",
+      "PPM na przyciskach miesięcy / dekad / lat w filtrach dat — wraca do poprzedniej wartości.",
+      "ENTER w polu HEARD (filtr od/do) — zatwierdza wpisaną wartość.",
+      "LPM na strzałkach << >> przy HEARD i czasie trwania — zmienia wartość o krok.",
+      "PPM w polu czasu trwania (Od/Do) — szybkie zaznaczenie wartości do edycji."
+    ]
+  },
+  {
+    section: "Foldery i REMIX",
+    items: [
+      "CTRL + klik na numer strony REMIX — włącza/wyłącza daną stronę REMIX.",
+      "LPM na numer strony REMIX — przełącza aktywną stronę.",
+      "LPM na strzałkach << >> przy % folderu REMIX — zmienia udział folderu.",
+      "Przytrzymanie LPM na strzałkach << >> przy % folderu REMIX — szybka, ciągła zmiana wartości.",
+      "ENTER w polu % folderu REMIX — zatwierdza ręcznie wpisaną wartość.",
+      "PPM w polu % folderu REMIX — przełącza tryb slotu (udział % / liczba albumów).",
+      "PRZYPISZ / ODPISZ (slot REMIX) — przypisuje lub usuwa folder dla konkretnego slotu.",
+      "Przełącznik slotu REMIX — aktywuje/dezaktywuje slot bez usuwania jego ustawień.",
+      "CLEAR (sekcja REMIX) — czyści przypisania i udziały slotów REMIX."
+    ]
+  },
+  {
+    section: "Edycja danych i dialogi",
+    items: [
+      "ENTER w oknie zapisu presetu filtra — zatwierdza zapis.",
+      "ENTER w oknach potwierdzeń/informacji — aktywuje przycisk potwierdzenia.",
+      "ENTER w oknie EDYCJA DANYCH — zatwierdza zmiany albumu.",
+      "Ikony kłódek w oknie EDYCJA DANYCH — odblokowują/zablokowują konkretne pola do edycji.",
+      "ENTER w formularzu dodawania/edycji Folder/Container/Collection — zapisuje formularz (bez SHIFT)."
+    ]
+  },
+  {
+    section: "Import / eksport / backup",
+    items: [
+      "IMPORT DB — wczytuje dane z SQLite do aplikacji.",
+      "UPDATE DB — zapisuje zmiany z aplikacji do SQLite.",
+      "IMPORT JSON — importuje albumy z pliku JSON.",
+      "EXPORT DB — eksportuje dane do XLSX.",
+      "SAVE XLSX / SAVE TXT — eksportuje przefiltrowane dane lub linki.",
+      "BACKUP DB — tworzy kopię zapasową bazy danych.",
+      "SPRAWDŹ DANE — wykonuje kontrolę danych i tworzy kontener ERROR dla braków."
+    ]
+  },
+  {
+    section: "Tryby i szybkie opcje",
+    items: [
+      "ADD / EDIT / DELETE (OPERACJE NA) — zarządzanie FOLDERS, CONTAINERS i COLLECTIONS.",
+      "AUTO / MANUAL w PATHS — wybór automatycznego folderu lub ręcznej ścieżki dla operacji import/export.",
+      "Ustawienie MANUAL + przycisk wyboru katalogu — wskazuje lokalizację roboczą dla DB/JSON/eksportów.",
+      "Brak menu systemowego skrótów: aplikacja nie używa Electron Menu accelerator ani globalShortcut."
+    ]
+  }
+];
+
 function truncateForStatus(name, maxLength = 15) {
   if (!name) return "";
   if (name.length <= maxLength) return name;
@@ -1260,47 +1352,22 @@ class UiController {
     infoTitle.textContent = "Opcje i skróty";
     infoSection.appendChild(infoTitle);
 
-    const shortcuts = [
-      "LPM na albumie: otwiera odtwarzacz web dla wybranego albumu.",
-      "ALT + LPM na albumie: otwiera okno EDYCJA DANYCH.",
-      "O + LPM na albumie: pokazuje podgląd okładki.",
-      "O + PPM na albumie: otwiera źródło okładki w przeglądarce.",
-      "F + LPM na albumie: dodaje album do ulubionych.",
-      "F + PPM na albumie: usuwa album z ulubionych.",
-      "C + LPM na albumie: kopiuje dane albumu do schowka.",
-      "D + LPM na albumie: usuwa album.",
-      "B + LPM na albumie (REMIX): blokuje album w folderze remix.",
-      "B + PPM na albumie (REMIX): odblokowuje album w folderze remix.",
-      "CTRL + LPM na albumie: zwiększa licznik HEARD.",
-      "CTRL + PPM na albumie: zmniejsza licznik HEARD.",
-      "1-5 + LPM na albumie: ustawia ocenę albumu w gwiazdkach.",
-      "SHIFT + LPM na albumie: przypisuje album do wybranego folderu.",
-      "SHIFT + PPM na albumie: usuwa przypisanie albumu z folderu (lub z folderu REMIX).",
-      "Przytrzymanie I na klawiaturze: pokazuje ID albumów.",
-      "Q na klawiaturze: włącza/wyłącza widoczność ocen RATING.",
-      "R na klawiaturze: losuje ponownie układ albumów w trybie REMIX.",
-      "Kliknięcie ikony labela na karcie albumu: zmienia selektor albumu.",
-      "CTRL + klik na numer strony REMIX: włącza/wyłącza stronę remix.",
-      "IMPORT DB: wczytuje dane z SQLite do aplikacji.",
-      "UPDATE DB: zapisuje zmiany do SQLite.",
-      "EXPORT DB: eksportuje dane do XLSX.",
-      "IMPORT JSON: importuje albumy z JSON.",
-      "SAVE XLSX / SAVE TXT: zapisuje dane lub linki do plików.",
-      "BACKUP DB: tworzy kopię bazy danych.",
-      "SPRAWDŹ DANE: sprawdza kompletność danych i tworzy kontener ERROR z brakami.",
-      "ADD / EDIT / DELETE (OPERACJE NA): zarządza FOLDERS, CONTAINERS lub COLLECTIONS.",
-      "AUTO / MANUAL w PATHS: ustawia tryb wyboru katalogów dla operacji."
-    ];
+    INFO_SHORTCUTS.forEach((group) => {
+      const sectionTitle = document.createElement("h4");
+      sectionTitle.className = "options-info-subtitle";
+      sectionTitle.textContent = group.section;
+      infoSection.appendChild(sectionTitle);
 
-    const list = document.createElement("ul");
-    list.className = "options-info-list";
-    shortcuts.forEach((line) => {
-      const item = document.createElement("li");
-      item.className = "options-info-item";
-      item.textContent = line;
-      list.appendChild(item);
+      const list = document.createElement("ul");
+      list.className = "options-info-list";
+      group.items.forEach((line) => {
+        const item = document.createElement("li");
+        item.className = "options-info-item";
+        item.textContent = line;
+        list.appendChild(item);
+      });
+      infoSection.appendChild(list);
     });
-    infoSection.appendChild(list);
 
     return infoSection;
   }
