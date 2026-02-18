@@ -624,9 +624,9 @@ class UiController {
   toggleFilterPanel() {
     const { filterPanel } = this.dom;
     if (!filterPanel) return;
-    if (filterPanel.style.display === "block") return;
+    if (filterPanel.style.display === "flex") return;
     filterPanel.style.visibility = "hidden";
-    filterPanel.style.display = "block";
+    filterPanel.style.display = "flex";
     this.syncFilterPanelWidth();
     this.syncFilterTabWidths();
     filterPanel.style.visibility = "";
