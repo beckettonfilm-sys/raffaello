@@ -688,8 +688,8 @@ class UiController {
   toggleOptionsPanel() {
     const { optionsPanel } = this.dom;
     if (!optionsPanel) return;
-    if (optionsPanel.style.display === "block") return;
-    optionsPanel.style.display = "block";
+    if (optionsPanel.style.display === "flex") return;
+    optionsPanel.style.display = "flex";
   }
 
   hideOptionsPanel() {
@@ -1028,6 +1028,7 @@ class UiController {
 
       const section = tab.builder();
       section.classList.add("filter-tab__panel");
+      section.dataset.tab = tab.id;
       section.hidden = true;
       tabsContent.appendChild(section);
       sections.set(tab.id, section);

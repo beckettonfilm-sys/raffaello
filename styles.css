@@ -409,6 +409,10 @@ body::-webkit-scrollbar {
   flex-direction: column;
 }
 
+#options-panel {
+  flex-direction: column;
+}
+
 .modal-overlay {
   position: fixed;
   inset: 0;
@@ -907,6 +911,27 @@ body::-webkit-scrollbar {
   border: 1px solid rgba(255, 255, 255, 0.04);
   border-radius: 12px;
   padding: 8px 10px 2px;
+}
+
+#options-panel .filter-tabs__content {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+}
+
+#options-panel .filter-tab__panel {
+  min-height: 0;
+}
+
+#options-panel .filter-tab__panel[data-tab="info"] {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding-bottom: 14px;
+  padding-right: 6px;
 }
 
 #filter-panel .filter-tabs__content {
@@ -2296,9 +2321,8 @@ main::-webkit-scrollbar {
 }
 
 .options-info-section {
-  max-height: 70vh;
-  overflow-y: auto;
-  padding-right: 6px;
+  max-height: none;
+  overflow: visible;
 }
 
 .options-info-title {
@@ -2316,10 +2340,16 @@ main::-webkit-scrollbar {
   color: #c2c2c7;
   font-size: 0.85rem;
   line-height: 1.35;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  word-break: normal;
 }
 
 .options-info-item {
   margin: 0;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  word-break: normal;
 }
 
 .new-counter {
