@@ -405,6 +405,10 @@ body::-webkit-scrollbar {
   border: 1px solid rgba(255, 255, 255, 0.08);
 }
 
+#filter-panel {
+  flex-direction: column;
+}
+
 .modal-overlay {
   position: fixed;
   inset: 0;
@@ -905,6 +909,13 @@ body::-webkit-scrollbar {
   padding: 8px 10px 2px;
 }
 
+#filter-panel .filter-tabs__content {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding-bottom: 14px;
+}
+
 .filter-tab__panel[hidden] {
   display: none;
 }
@@ -1145,6 +1156,23 @@ body::-webkit-scrollbar {
   color: #e7e7ea;
   max-width: 260px;
   font-size: 0.9rem;
+}
+
+.filter-tab__panel[data-tab="search"] .filter-toggle-row {
+  flex-wrap: nowrap;
+}
+
+.filter-tab__panel[data-tab="search"] .filter-toggle-title {
+  flex: 1;
+  min-width: 0;
+  max-width: none;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.filter-tab__panel[data-tab="search"] .filter-toggle-row .toggle-wrapper {
+  flex-shrink: 0;
 }
 
 .filter-grid {
