@@ -1921,7 +1921,7 @@ main::-webkit-scrollbar {
   transition: filter 0.25s ease;
 }
 
-.album-card:hover .album-cover.grayscale {
+.album-cover-wrap:hover .album-cover.grayscale {
   filter: grayscale(0%);
 }
 

@@ -157,6 +157,7 @@ class UiController {
       operationsScope: "folders",
       showFavorites: true,
       showFavoriteCorners: true,
+      cdBackGlobalEnabled: true,
       showRatings: this.readStoredRatingState(),
       autoFilterFolder: false,
       remixEnabled: false,
@@ -1440,6 +1441,36 @@ class UiController {
     favoriteCornerRow.appendChild(favoriteCornerLabel);
     favoriteCornerRow.appendChild(favoriteCornerSwitch.wrapper);
     searchSection.appendChild(favoriteCornerRow);
+
+    const cdBackGlobalRow = document.createElement("div");
+    cdBackGlobalRow.className = "filter-toggle-row";
+    const cdBackGlobalLabel = document.createElement("div");
+    cdBackGlobalLabel.className = "filter-toggle-title";
+    cdBackGlobalLabel.textContent = "CD BACK (GLOBAL) – wyświetlanie tyłu okładki";
+    const cdBackGlobalSwitch = this.createSwitch({
+      id: "cdBackGlobalToggle",
+      leftLabel: "OFF",
+      rightLabel: "ON",
+      defaultRight: this.uiState.cdBackGlobalEnabled,
+      compact: true
+    });
+    this.updateSwitchLabels(
+      cdBackGlobalSwitch.input,
+      cdBackGlobalSwitch.leftLabel,
+      cdBackGlobalSwitch.rightLabel
+    );
+    cdBackGlobalSwitch.input.addEventListener("change", () => {
+      this.uiState.cdBackGlobalEnabled = cdBackGlobalSwitch.input.checked;
+      this.updateSwitchLabels(
+        cdBackGlobalSwitch.input,
+        cdBackGlobalSwitch.leftLabel,
+        cdBackGlobalSwitch.rightLabel
+      );
+      this.processAndRender();
+    });
+    cdBackGlobalRow.appendChild(cdBackGlobalLabel);
+    cdBackGlobalRow.appendChild(cdBackGlobalSwitch.wrapper);
+    searchSection.appendChild(cdBackGlobalRow);
 
     const dateRange = document.createElement("div");
     dateRange.className = "filter-date-range";
@@ -5325,7 +5356,8 @@ class UiController {
     const templateUrl = this.getLocalImageUrl("CD_TEMPLATE", templateFile);
     const backFile = this.getCdBackFileName(album);
     const backUrl = backFile ? this.getLocalImageUrl("FILES/CD_BACK", backFile) : "";
-    const usesBack = Number(album?.cd_back) > 0 && Boolean(backUrl);
+    const forceBack = this.uiState.cdBackGlobalEnabled;
+    const usesBack = forceBack ? Boolean(backUrl) : Number(album?.cd_back) > 0 && Boolean(backUrl);
     return {
       preferred: usesBack ? backUrl : templateUrl,
       template: templateUrl,
@@ -5729,11 +5761,12 @@ class UiController {
       this.cycleSelector(album, img, card);
     });
 
-    card.addEventListener("mouseenter", () => {
+    coverWrap.addEventListener("mouseenter", () => {
+      if (!this.uiState.cdBackGlobalEnabled) return;
       applyCdBackCover();
       if (album.selector === "X") img.classList.remove("grayscale");
     });
-    card.addEventListener("mouseleave", () => {
+    coverWrap.addEventListener("mouseleave", () => {
       applyMiniCover();
       if (album.selector === "X") img.classList.add("grayscale");
     });
