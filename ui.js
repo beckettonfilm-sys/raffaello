@@ -102,6 +102,85 @@ const SELECTOR_STYLES = {
 
 const SELECTOR_VALUES = Object.keys(SELECTOR_LABELS);
 
+const INFO_SHORTCUTS = [
+  {
+    section: "Karty albumów — klawiatura + mysz",
+    items: [
+      { title: "LPM", text: "otwiera album w przeglądarce (web player) — działa na karcie albumu, gdy aplikacja jest online." },
+      { title: "PPM", text: "otwiera album w aplikacji TIDAL (protocol link) i przełącza selector recenzji — działa na karcie albumu." },
+      { title: "ALT + LPM", text: "otwiera okno EDYCJA DANYCH — działa na karcie albumu." },
+      { title: "O + LPM", text: "pokazuje podgląd okładki — działa na karcie albumu." },
+      { title: "O + PPM", text: "otwiera źródło okładki w przeglądarce — działa na karcie albumu." },
+      { title: "F + LPM / F + PPM", text: "dodaje lub usuwa album z ulubionych — działa na karcie albumu." },
+      { title: "C + LPM / C + PPM", text: "kopiuje dane albumu lub sam tytuł do schowka — działa na karcie albumu." },
+      { title: "D + LPM", text: "usuwa album (z potwierdzeniem) — działa na karcie albumu." },
+      { title: "CTRL + LPM / CTRL + PPM", text: "zwiększa lub zmniejsza licznik HEARD — działa na karcie albumu." },
+      { title: "1-5 + LPM", text: "ustawia ocenę gwiazdkową albumu — działa na karcie albumu po przytrzymaniu klawisza 1–5." },
+      { title: "1-5 + PPM", text: "czyści ocenę (ustawia 0) — działa na karcie albumu po przytrzymaniu klawisza 1–5." },
+      { title: "SHIFT + LPM / SHIFT + PPM", text: "SHIFT + klik przypisuje album do wybranego folderu, SHIFT + PPM usuwa przypisanie — działa na karcie albumu; w REMIX usuwa z aktualnego folderu remix." }
+    ]
+  },
+  {
+    section: "REMIX",
+    items: [
+      { title: "R", text: "losuje ponownie układ albumów — działa globalnie, gdy REMIX jest aktywny." },
+      { title: "B + LPM / B + PPM", text: "blokuje lub odblokowuje album w folderze remix — działa na karcie albumu tylko w trybie REMIX." },
+      { title: "CTRL + klik numeru strony REMIX", text: "włącza/wyłącza stronę remix bez przechodzenia na nią — działa na przyciskach stron REMIX." },
+      { title: "<< / >> (przytrzymanie)", text: "przytrzymanie przyspiesza zmianę wartości udziału folderu — działa w slotach REMIX." },
+      { title: "Enter w polu %", text: "zatwierdza ręcznie wpisaną wartość procentową — działa w slotach REMIX." },
+      { title: "PPM w polu %", text: "przełącza tryb slotu (np. procentowy/stały) — działa w slotach REMIX." },
+      { title: "CLEAR", text: "czyści przypisania slotów REMIX — działa w zakładce FILTER > REMIX." }
+    ]
+  },
+  {
+    section: "Widok i metadane",
+    items: [
+      { title: "Q", text: "włącza/wyłącza widoczność ocen RATING — działa globalnie (poza inputami i modalami)." },
+      { title: "Przytrzymanie I", text: "tymczasowo pokazuje identyfikatory albumów (ID) — działa globalnie." },
+      { title: "Klik ikony labela", text: "przełącza selector albumu (N/X/F/K/O) — działa na karcie albumu." },
+      { title: "Klik ikony formatu", text: "kopiuje Roon ID do schowka — działa na karcie albumu." },
+      { title: "Hover na okładce", text: "pokazuje CD-back zamiast miniatury (gdy funkcja aktywna) — działa po najechaniu kursorem." }
+    ]
+  },
+  {
+    section: "Filtry i pola wejściowe",
+    items: [
+      { title: "Enter (HEARD od/do)", text: "zatwierdza ręcznie wpisaną wartość zakresu HEARD — działa w FILTER > TIME." },
+      { title: "<< / >> (HEARD i czas trwania)", text: "zmienia zakres filtrów krokowo — działa w FILTER > TIME." },
+      { title: "PPM w polu czasu trwania", text: "zaznacza całą wartość pola do szybkiej podmiany — działa w FILTER > TIME." },
+      { title: "CLEAR w sekcjach", text: "czyści aktywne filtry (wyszukiwanie, REMIX, zakresy itp.) — działa w zakładkach panelu FILTER." }
+    ]
+  },
+  {
+    section: "Operacje i dane",
+    items: [
+      { title: "IMPORT DB", text: "wczytuje dane z pliku/SQLite do aplikacji — działa w OPERATIONS." },
+      { title: "UPDATE DB", text: "zapisuje zmiany z aplikacji do bazy — działa w OPERATIONS." },
+      { title: "EXPORT DB", text: "eksportuje dane do XLSX — działa w OPERATIONS." },
+      { title: "IMPORT JSON", text: "importuje albumy z JSON — działa w OPERATIONS." },
+      { title: "SAVE XLSX / SAVE TXT", text: "zapisuje przefiltrowane wyniki i linki do plików — działa w głównym pasku akcji." },
+      { title: "BACKUP DB", text: "tworzy kopię bezpieczeństwa bazy — działa w panelu OPTIONS." },
+      { title: "SPRAWDŹ DANE", text: "uruchamia kontrolę spójności danych i tworzy kontener ERROR przy brakach — działa w panelu OPTIONS." }
+    ]
+  },
+  {
+    section: "Operacje na strukturze i ścieżkach",
+    items: [
+      { title: "ADD / EDIT / DELETE (OPERACJE NA)", text: "zarządza FOLDERS, CONTAINERS i COLLECTIONS — działa w OPTIONS > OPERATIONS." },
+      { title: "AUTO / MANUAL (PATHS)", text: "przełącza tryb wyboru katalogu dla importu/eksportu/aktualizacji — działa w OPTIONS > PATHS." },
+      { title: "Wybierz folder / plik", text: "ustawia ścieżkę ręcznie i zapisuje konfigurację operacji — działa w OPTIONS > PATHS." }
+    ]
+  },
+  {
+    section: "Okna dialogowe",
+    items: [
+      { title: "Enter", text: "zatwierdza formularz/dialog (np. nazwa presetu, edycja albumu, formularze operacji) — działa w aktywnym oknie modalnym." },
+      { title: "Anuluj / Zamknij", text: "zamyka aktualny dialog bez zapisu — działa przez dedykowany przycisk." },
+      { title: "Klik lub PPM poza podglądem", text: "zamyka podgląd okładki / bookletu — działa na warstwie overlay." }
+    ]
+  }
+];
+
 function truncateForStatus(name, maxLength = 15) {
   if (!name) return "";
   if (name.length <= maxLength) return name;
@@ -1226,7 +1305,12 @@ class UiController {
   createInfoSection() {
     const infoSection = document.createElement("div");
     infoSection.className = "filter-section options-info-section";
-    infoSection.appendChild(this.createSectionTitle("INFO"));
+    const heading = this.createSectionTitle("INFO");
+    heading.classList.add("options-info-heading");
+    infoSection.appendChild(heading);
+
+    const scrollArea = document.createElement("div");
+    scrollArea.className = "options-info-scroll";
 
     const infoStack = document.createElement("div");
     infoStack.className = "options-info-stack";
@@ -1249,7 +1333,7 @@ class UiController {
     infoStack.appendChild(newCounter);
     infoStack.appendChild(originalCounter);
     infoStack.appendChild(copyCounter);
-    infoSection.appendChild(infoStack);
+    scrollArea.appendChild(infoStack);
 
     this.dom.newCounter = newCounter;
     this.dom.originalCounter = originalCounter;
@@ -1258,49 +1342,35 @@ class UiController {
     const infoTitle = document.createElement("div");
     infoTitle.className = "options-info-title";
     infoTitle.textContent = "Opcje i skróty";
-    infoSection.appendChild(infoTitle);
+    scrollArea.appendChild(infoTitle);
 
-    const shortcuts = [
-      "LPM na albumie: otwiera odtwarzacz web dla wybranego albumu.",
-      "ALT + LPM na albumie: otwiera okno EDYCJA DANYCH.",
-      "O + LPM na albumie: pokazuje podgląd okładki.",
-      "O + PPM na albumie: otwiera źródło okładki w przeglądarce.",
-      "F + LPM na albumie: dodaje album do ulubionych.",
-      "F + PPM na albumie: usuwa album z ulubionych.",
-      "C + LPM na albumie: kopiuje dane albumu do schowka.",
-      "D + LPM na albumie: usuwa album.",
-      "B + LPM na albumie (REMIX): blokuje album w folderze remix.",
-      "B + PPM na albumie (REMIX): odblokowuje album w folderze remix.",
-      "CTRL + LPM na albumie: zwiększa licznik HEARD.",
-      "CTRL + PPM na albumie: zmniejsza licznik HEARD.",
-      "1-5 + LPM na albumie: ustawia ocenę albumu w gwiazdkach.",
-      "SHIFT + LPM na albumie: przypisuje album do wybranego folderu.",
-      "SHIFT + PPM na albumie: usuwa przypisanie albumu z folderu (lub z folderu REMIX).",
-      "Przytrzymanie I na klawiaturze: pokazuje ID albumów.",
-      "Q na klawiaturze: włącza/wyłącza widoczność ocen RATING.",
-      "R na klawiaturze: losuje ponownie układ albumów w trybie REMIX.",
-      "Kliknięcie ikony labela na karcie albumu: zmienia selektor albumu.",
-      "CTRL + klik na numer strony REMIX: włącza/wyłącza stronę remix.",
-      "IMPORT DB: wczytuje dane z SQLite do aplikacji.",
-      "UPDATE DB: zapisuje zmiany do SQLite.",
-      "EXPORT DB: eksportuje dane do XLSX.",
-      "IMPORT JSON: importuje albumy z JSON.",
-      "SAVE XLSX / SAVE TXT: zapisuje dane lub linki do plików.",
-      "BACKUP DB: tworzy kopię bazy danych.",
-      "SPRAWDŹ DANE: sprawdza kompletność danych i tworzy kontener ERROR z brakami.",
-      "ADD / EDIT / DELETE (OPERACJE NA): zarządza FOLDERS, CONTAINERS lub COLLECTIONS.",
-      "AUTO / MANUAL w PATHS: ustawia tryb wyboru katalogów dla operacji."
-    ];
+    const sectionsWrap = document.createElement("div");
+    sectionsWrap.className = "options-info-sections";
 
-    const list = document.createElement("ul");
-    list.className = "options-info-list";
-    shortcuts.forEach((line) => {
-      const item = document.createElement("li");
-      item.className = "options-info-item";
-      item.textContent = line;
-      list.appendChild(item);
+    INFO_SHORTCUTS.forEach(({ section, items }) => {
+      const sectionWrap = document.createElement("section");
+      sectionWrap.className = "options-info-group";
+
+      const sectionTitle = document.createElement("h4");
+      sectionTitle.className = "options-info-group__title";
+      sectionTitle.textContent = section;
+      sectionWrap.appendChild(sectionTitle);
+
+      const list = document.createElement("ul");
+      list.className = "options-info-list";
+      items.forEach(({ title, text }) => {
+        const item = document.createElement("li");
+        item.className = "options-info-item";
+        item.innerHTML = `<strong>${title}</strong> — ${text}`;
+        list.appendChild(item);
+      });
+
+      sectionWrap.appendChild(list);
+      sectionsWrap.appendChild(sectionWrap);
     });
-    infoSection.appendChild(list);
+
+    scrollArea.appendChild(sectionsWrap);
+    infoSection.appendChild(scrollArea);
 
     return infoSection;
   }
