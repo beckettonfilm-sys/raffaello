@@ -339,6 +339,116 @@ function parseJsonReleaseDate(value) {
   return 0;
 }
 
+const LABEL_STOPWORDS = new Set(["the", "a", "an"]);
+
+function normalizeTokenSet(value) {
+  const normalized = String(value || "")
+    .toLowerCase()
+    .trim()
+    .replace(/[‘’′]/g, "'")
+    .replace(/[“”″]/g, '"')
+    .replace(/[–—−]/g, "-")
+    .replace(/[^a-z0-9\s]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+
+  if (!normalized) return [];
+
+  return normalized
+    .split(" ")
+    .map((token) => token.trim())
+    .filter((token) => token && !LABEL_STOPWORDS.has(token));
+}
+
+function computeContainmentScore(sourceTokens, targetTokens) {
+  const sourceSet = new Set(sourceTokens);
+  const targetSet = new Set(targetTokens);
+  if (!sourceSet.size) return 0;
+  let intersection = 0;
+  sourceSet.forEach((token) => {
+    if (targetSet.has(token)) intersection += 1;
+  });
+  return intersection / sourceSet.size;
+}
+
+async function loadLabelLookupFromExcel(appDirectory) {
+  const filePath = getFilesPath(appDirectory, "download", "title_artist_label.xlsx");
+  if (!(await pathExists(filePath))) return [];
+
+  try {
+    const workbook = XLSX.readFile(filePath, { cellDates: false });
+    const [sheetName] = workbook.SheetNames;
+    if (!sheetName) return [];
+    const rows = XLSX.utils.sheet_to_json(workbook.Sheets[sheetName], {
+      defval: "",
+      raw: false
+    });
+
+    return rows.map((row, index) => {
+      const title = sanitizeJsonText(row?.title ?? row?.TITLE ?? "");
+      const artist = sanitizeJsonText(row?.artist ?? row?.ARTIST ?? "");
+      const label = sanitizeJsonText(row?.label ?? row?.LABEL ?? "");
+      return {
+        index,
+        label,
+        titleTokens: normalizeTokenSet(title),
+        artistTokens: normalizeTokenSet(artist)
+      };
+    });
+  } catch (error) {
+    console.warn("[Import JSON] Nie udało się odczytać title_artist_label.xlsx:", error?.message || error);
+    return [];
+  }
+}
+
+function resolveLabelForRecord({ title, artist, lookupRows }) {
+  if (!Array.isArray(lookupRows) || !lookupRows.length) return "";
+
+  const artistSet = new Set(normalizeTokenSet(artist));
+  const titleTokens = normalizeTokenSet(title);
+  const titleSet = new Set(titleTokens);
+  const artistSize = artistSet.size;
+  const titleSize = titleSet.size;
+  if (!artistSize || !titleSize) return "";
+
+  const artistCandidates = lookupRows.filter((row) => {
+    const rowArtistSet = new Set(row.artistTokens || []);
+    if (rowArtistSet.size !== artistSize) return false;
+    for (const token of artistSet) {
+      if (!rowArtistSet.has(token)) return false;
+    }
+    return true;
+  });
+
+  if (!artistCandidates.length) return "";
+
+  const exactMatches = artistCandidates.filter((row) => {
+    const rowTitleSet = new Set(row.titleTokens || []);
+    if (rowTitleSet.size !== titleSize) return false;
+    for (const token of titleSet) {
+      if (!rowTitleSet.has(token)) return false;
+    }
+    return true;
+  });
+
+  if (exactMatches.length) {
+    return sanitizeJsonText(exactMatches[0]?.label);
+  }
+
+  if (titleTokens.length < 2) return "";
+
+  let best = null;
+  for (const row of artistCandidates) {
+    const score = computeContainmentScore(titleTokens, row.titleTokens || []);
+    if (score < 0.9) continue;
+    if (!best || score > best.score || (score === best.score && row.index < best.index)) {
+      best = { score, index: row.index, label: row.label };
+    }
+  }
+
+  return best ? sanitizeJsonText(best.label) : "";
+}
+
 function extractTidalAlbumId(link = "") {
   if (!link) return "";
   const match = String(link).match(/tidal\.com\/(?:browse\/)?album\/(\d+)/i);
@@ -1232,6 +1342,9 @@ function registerHandlers() {
     const targetDir = payload?.directory || getAppDirectory();
     await ensureDirectory(targetDir);
     const collectionName = payload?.collectionName;
+    const enableLabelMatch = payload?.enableLabelMatch === true;
+    const appDirectory = getAppDirectory();
+    const labelLookupRows = enableLabelMatch ? await loadLabelLookupFromExcel(appDirectory) : [];
 
     const source = await resolveJsonSourceFile({
       directory: targetDir,
@@ -1331,6 +1444,10 @@ function registerHandlers() {
         incomplete += 1;
       }
 
+      const matchedLabel = enableLabelMatch
+        ? resolveLabelForRecord({ title, artist, lookupRows: labelLookupRows })
+        : "";
+
       albumsToInsert.push({
         ID_ALBUMU: nextId,
         SELECTOR: "N",
@@ -1339,7 +1456,7 @@ function registerHandlers() {
         RATING: 0,
         BOOKLET: 0,
         CD_BACK: 0,
-        LABEL: "unknown",
+        LABEL: matchedLabel || "unknown",
         TIDAL_LINK: link,
         FORMAT: "TIDAL streaming",
         ROON_ID: String(nextId).padStart(6, "0"),
@@ -1376,7 +1493,6 @@ function registerHandlers() {
       }
     };
 
-    const appDirectory = getAppDirectory();
     let defaultCoverCount = 0;
 
     const importResult = await importJsonAlbums({
