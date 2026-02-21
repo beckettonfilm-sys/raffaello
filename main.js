@@ -25,7 +25,7 @@ const {
 } = require("./db");
 const XLSX = require("xlsx");
 const fs = require("fs");
-const { runQobuzScraper } = require("./qobuzScraper");
+const { runQobuzScraper } = require("./qobuz_scraper");
 
 const SHEET_NAME = "SQLite";
 
