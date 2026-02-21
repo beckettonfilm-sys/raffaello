@@ -38,6 +38,102 @@ const EXTRA_SHEETS = {
   albumFolders: "ALBUM_FOLDERS"
 };
 
+const FILES_ROOT_FOLDER = "FILES";
+const FILES_MIGRATION_FOLDERS = ["CD_TEMPLATE", "LABELS", "pic_max", "pic_mini", "DATABASE", "BOOKLET", "FORMAT", "icons"];
+
+function getAppDirectory() {
+  return app.getAppPath() || __dirname;
+}
+
+function getFilesRoot(appDirectory = getAppDirectory()) {
+  return path.join(appDirectory, FILES_ROOT_FOLDER);
+}
+
+function normalizeFilesSubpath(segment = "") {
+  const normalized = String(segment || "").replace(/\\/g, "/").replace(/^\/+|\/+$/g, "");
+  if (!normalized) return "";
+  if (normalized === FILES_ROOT_FOLDER) return "";
+  if (normalized.startsWith(`${FILES_ROOT_FOLDER}/`)) {
+    return normalized.slice(FILES_ROOT_FOLDER.length + 1);
+  }
+  return normalized;
+}
+
+function getFilesPath(appDirectory = getAppDirectory(), ...segments) {
+  const normalizedSegments = segments
+    .map((segment) => normalizeFilesSubpath(segment))
+    .filter(Boolean)
+    .flatMap((segment) => segment.split("/").filter(Boolean));
+  return path.join(getFilesRoot(appDirectory), ...normalizedSegments);
+}
+
+async function pathExists(targetPath) {
+  try {
+    await fs.promises.access(targetPath, fs.constants.F_OK);
+    return true;
+  } catch (_error) {
+    return false;
+  }
+}
+
+async function moveFileSafe(sourcePath, targetPath) {
+  try {
+    await fs.promises.rename(sourcePath, targetPath);
+  } catch (error) {
+    if (error?.code === "EXDEV") {
+      await fs.promises.copyFile(sourcePath, targetPath, fs.constants.COPYFILE_EXCL);
+      await fs.promises.unlink(sourcePath);
+      return;
+    }
+    throw error;
+  }
+}
+
+async function mergeDirectorySafe(sourceDir, targetDir) {
+  await ensureDirectory(targetDir);
+  const entries = await fs.promises.readdir(sourceDir, { withFileTypes: true });
+  for (const entry of entries) {
+    const sourcePath = path.join(sourceDir, entry.name);
+    const targetPath = path.join(targetDir, entry.name);
+    if (entry.isDirectory()) {
+      await mergeDirectorySafe(sourcePath, targetPath);
+      try {
+        await fs.promises.rmdir(sourcePath);
+      } catch (_error) {}
+      continue;
+    }
+    if (await pathExists(targetPath)) {
+      console.log(`[FILES migration] Pomijam istniejący plik: ${targetPath}`);
+      continue;
+    }
+    await moveFileSafe(sourcePath, targetPath);
+    console.log(`[FILES migration] Przeniesiono plik: ${sourcePath} -> ${targetPath}`);
+  }
+}
+
+async function migrateLegacyAssetsToFiles(appDirectory = getAppDirectory()) {
+  const filesRoot = getFilesRoot(appDirectory);
+  await ensureDirectory(filesRoot);
+
+  for (const folderName of FILES_MIGRATION_FOLDERS) {
+    const sourceDir = path.join(appDirectory, folderName);
+    const targetDir = getFilesPath(appDirectory, folderName);
+    if (!(await pathExists(sourceDir))) continue;
+
+    if (!(await pathExists(targetDir))) {
+      await fs.promises.rename(sourceDir, targetDir);
+      console.log(`[FILES migration] Przeniesiono folder: ${sourceDir} -> ${targetDir}`);
+      continue;
+    }
+
+    await mergeDirectorySafe(sourceDir, targetDir);
+    try {
+      await fs.promises.rmdir(sourceDir);
+    } catch (_error) {}
+    console.log(`[FILES migration] Scalono folder: ${sourceDir} -> ${targetDir}`);
+  }
+}
+
 function getWorksheetByName(workbook, preferredName) {
   if (!workbook?.Sheets) return null;
   if (preferredName && workbook.Sheets[preferredName]) return workbook.Sheets[preferredName];
@@ -156,7 +252,7 @@ async function findLatestDataFile(targetDir, prefix) {
 }
 
 async function resolveSourceFile({ directory, filePath, prefix }) {
-  const targetDir = directory || app.getAppPath() || __dirname;
+  const targetDir = directory || getAppDirectory();
   await ensureDirectory(targetDir);
 
   if (filePath) {
@@ -191,7 +287,7 @@ async function findLatestJsonFile(targetDir) {
 }
 
 async function resolveJsonSourceFile({ directory, filePath } = {}) {
-  const targetDir = directory || app.getAppPath() || __dirname;
+  const targetDir = directory || getAppDirectory();
   await ensureDirectory(targetDir);
 
   if (filePath) {
@@ -270,7 +366,7 @@ function buildFolderNameForIssues(missingFields, isDuplicate) {
 }
 
 async function loadLabelHierarchy() {
-  const baseDir = app.getAppPath() || __dirname;
+  const baseDir = getAppDirectory();
   const labelsPath = path.join(baseDir, "labels.txt");
   try {
     const raw = await fs.promises.readFile(labelsPath, "utf8");
@@ -560,8 +656,8 @@ async function ensureAlbumCovers({ appDirectory, albumId, pictureUrl }) {
   // ograniczamy liczbę jednoczesnych zadań (download + sharp).
   await acquireCoverTaskSlot();
   try {
-    const miniDir = path.join(appDirectory, "pic_mini");
-    const maxDir = path.join(appDirectory, "pic_max");
+    const miniDir = getFilesPath(appDirectory, "pic_mini");
+    const maxDir = getFilesPath(appDirectory, "pic_max");
     await ensureDirectory(miniDir);
     await ensureDirectory(maxDir);
 
@@ -588,8 +684,8 @@ async function ensureAlbumCovers({ appDirectory, albumId, pictureUrl }) {
 
     // 2) MINI cover = CD mockup generated from MAX cover
     try {
-      // Templaty zgodnie z ustaleniem: folder CD_TEMPLATE obok main.js
-      const templateDir = path.join(__dirname, "CD_TEMPLATE");
+      // Templaty po migracji: APP_DIR/FILES/CD_TEMPLATE
+      const templateDir = getFilesPath(appDirectory, "CD_TEMPLATE");
       await generateCdMockup({ templateDir, coverPath: maxTarget, outputPath: miniTarget });
     } catch (error) {
       usedDefault = true;
@@ -732,7 +828,7 @@ async function createWindow() {
     minHeight: 720,
     autoHideMenuBar: true,
     // Ikona apki dla Raffaello
-    icon: path.join(__dirname, "icons", "Raffaello_LOGO_01.ico"),
+    icon: getFilesPath(getAppDirectory(), "icons", "Raffaello_LOGO_01.ico"),
     webPreferences: {
       preload: path.join(__dirname, "preload.js"),
       contextIsolation: true,
@@ -902,7 +998,7 @@ function registerHandlers() {
   });
 
   ipcMain.handle("export-xlsx", async (_event, payload = {}) => {
-    const targetDir = payload?.directory || app.getAppPath() || __dirname;
+    const targetDir = payload?.directory || getAppDirectory();
     await ensureDirectory(targetDir);
     const fileName = buildTimestampedName(DATA_PREFIXES.importDb);
     const dataFilePath = path.join(targetDir, fileName);
@@ -952,7 +1048,7 @@ function registerHandlers() {
   });
 
   ipcMain.handle("import-xlsx", async (_event, payload = {}) => {
-    const targetDir = payload?.directory || app.getAppPath() || __dirname;
+    const targetDir = payload?.directory || getAppDirectory();
     await ensureDirectory(targetDir);
 
     const source = await resolveSourceFile({
@@ -1064,7 +1160,7 @@ function registerHandlers() {
   });
 
   ipcMain.handle("import-news-xlsx", async (_event, payload = {}) => {
-    const targetDir = payload?.directory || app.getAppPath() || __dirname;
+    const targetDir = payload?.directory || getAppDirectory();
     await ensureDirectory(targetDir);
 
     const source = await resolveSourceFile({
@@ -1133,7 +1229,7 @@ function registerHandlers() {
   });
 
   ipcMain.handle("import-json", async (event, payload = {}) => {
-    const targetDir = payload?.directory || app.getAppPath() || __dirname;
+    const targetDir = payload?.directory || getAppDirectory();
     await ensureDirectory(targetDir);
     const collectionName = payload?.collectionName;
 
@@ -1280,7 +1376,7 @@ function registerHandlers() {
       }
     };
 
-    const appDirectory = app.getAppPath() || __dirname;
+    const appDirectory = getAppDirectory();
     let defaultCoverCount = 0;
 
     const importResult = await importJsonAlbums({
@@ -1381,7 +1477,7 @@ function registerHandlers() {
 
   ipcMain.handle("get-app-directory", () => ({
     status: "ok",
-    path: app.getAppPath() || __dirname
+    path: getAppDirectory()
   }));
 
   ipcMain.handle("select-file", async (_event, payload = {}) => {
@@ -1415,7 +1511,7 @@ function registerHandlers() {
     if (!fileName) {
       return { status: "error", error: "Brak nazwy pliku" };
     }
-    const targetDir = directory || app.getAppPath() || __dirname;
+    const targetDir = directory || getAppDirectory();
     await ensureDirectory(targetDir);
     const filePath = path.join(targetDir, fileName);
     const buffer = binary ? Buffer.from(data || []) : Buffer.from(String(data ?? ""), "utf8");
@@ -1463,10 +1559,11 @@ function registerHandlers() {
     if (!Number.isFinite(albumId) || albumId <= 0) {
       return { status: "error", error: "Nieprawidłowe ID albumu." };
     }
-    const baseDir = app.getAppPath() || __dirname;
+    const baseDir = getAppDirectory();
     const targets = [
-      path.join(baseDir, "pic_mini", `mini_${albumId}.jpg`),
-      path.join(baseDir, "pic_max", `max_${albumId}.jpg`)
+      getFilesPath(baseDir, "pic_mini", `mini_${albumId}.jpg`),
+      getFilesPath(baseDir, "pic_max", `max_${albumId}.jpg`),
+      getFilesPath(baseDir, "CD_BACK", `back_${albumId}.jpg`)
     ];
     await Promise.all(
       targets.map(async (target) => {
@@ -1523,6 +1620,11 @@ app.whenReady().then(async () => {
     // Wyłączamy menu aplikacji na Windows/Linux, żeby ALT nie przełączał focusu na pasek menu
     // (to potrafi rozwalić wpisywanie w polach tekstowych po native dialogach).
     Menu.setApplicationMenu(null);
+  }
+  try {
+    await migrateLegacyAssetsToFiles(getAppDirectory());
+  } catch (error) {
+    console.warn(`[FILES migration] Błąd migracji folderów do FILES: ${error?.message || error}`);
   }
   await bootstrapDatabase();
   registerHandlers();

@@ -38,11 +38,11 @@ import {
 } from "./api.js";
 
 const DATA_DIRECTORIES = {
-  importDb: ["DATABASE", "MUSIC_DATABASE"],
-  importJson: ["DATABASE", "UPDATE_JSON"],
-  updateDb: ["DATABASE", "UPDATE_DATABASE"],
-  exportDb: ["DATABASE", "EXPORT_DATABASE"],
-  download: ["DATABASE", "EXPORT_DATABASE"]
+  importDb: ["FILES", "DATABASE", "MUSIC_DATABASE"],
+  importJson: ["FILES", "DATABASE", "UPDATE_JSON"],
+  updateDb: ["FILES", "DATABASE", "UPDATE_DATABASE"],
+  exportDb: ["FILES", "DATABASE", "EXPORT_DATABASE"],
+  download: ["FILES", "DATABASE", "EXPORT_DATABASE"]
 };
 
 const DATA_PREFIXES = {
@@ -62,6 +62,13 @@ function buildPath(base, ...segments) {
     result += cleaned;
   });
   return result;
+}
+
+function filesFolder(folderName = "") {
+  const normalized = String(folderName || "").replace(/\\/g, "/").replace(/^\/+|\/+$/g, "");
+  if (!normalized) return "FILES";
+  if (normalized === "FILES" || normalized.startsWith("FILES/")) return normalized;
+  return `FILES/${normalized}`;
 }
 
 const SELECTOR_LABELS = {
@@ -4197,7 +4204,7 @@ class UiController {
         const setLocked = (isLocked) => {
           input.readOnly = isLocked;
           input.classList.toggle("modal-input--locked", isLocked);
-          icon.src = isLocked ? "icons/lock_icon_OFF.svg" : "icons/lock_icon_ON.svg";
+          icon.src = this.getLocalImageUrl(filesFolder("icons"), isLocked ? "lock_icon_OFF.svg" : "lock_icon_ON.svg");
           icon.alt = isLocked ? "Zablokowane" : "Odblokowane";
           button.setAttribute("aria-pressed", String(!isLocked));
           button.title = isLocked ? "Odblokuj pole" : "Zablokuj pole";
@@ -4242,7 +4249,7 @@ class UiController {
         const setLocked = (isLocked) => {
           select.disabled = isLocked;
           select.classList.toggle("modal-input--locked", isLocked);
-          icon.src = isLocked ? "icons/lock_icon_OFF.svg" : "icons/lock_icon_ON.svg";
+          icon.src = this.getLocalImageUrl(filesFolder("icons"), isLocked ? "lock_icon_OFF.svg" : "lock_icon_ON.svg");
           icon.alt = isLocked ? "Zablokowane" : "Odblokowane";
           button.setAttribute("aria-pressed", String(!isLocked));
           button.title = isLocked ? "Odblokuj pole" : "Zablokuj pole";
@@ -4316,7 +4323,7 @@ class UiController {
             input.readOnly = isLocked;
             input.classList.toggle("modal-input--locked", isLocked);
           });
-          icon.src = isLocked ? "icons/lock_icon_OFF.svg" : "icons/lock_icon_ON.svg";
+          icon.src = this.getLocalImageUrl(filesFolder("icons"), isLocked ? "lock_icon_OFF.svg" : "lock_icon_ON.svg");
           icon.alt = isLocked ? "Zablokowane" : "Odblokowane";
           button.setAttribute("aria-pressed", String(!isLocked));
           button.title = isLocked ? "Odblokuj pole" : "Zablokuj pole";
@@ -5391,11 +5398,12 @@ class UiController {
 
   getLocalImageUrl(folderName, fileName) {
     if (!folderName || !fileName) return "";
+    const normalizedFolder = filesFolder(folderName);
     const basePath = this.uiState.appDirectory || "";
     if (!basePath) {
-      return `${folderName}/${fileName}`;
+      return `${normalizedFolder}/${fileName}`;
     }
-    const resolvedPath = buildPath(basePath, folderName, fileName);
+    const resolvedPath = buildPath(basePath, normalizedFolder, fileName);
     const normalized = resolvedPath.replace(/\\/g, "/");
     const prefix = normalized.startsWith("/") ? "file://" : "file:///";
     return encodeURI(`${prefix}${normalized}`);
@@ -5418,14 +5426,14 @@ class UiController {
     if (!this.uiState.appDirectory) return "";
     const fileName = this.getCdBackFileName(album);
     if (!fileName) return "";
-    return buildPath(this.uiState.appDirectory, "FILES/CD_BACK", fileName);
+    return buildPath(this.uiState.appDirectory, filesFolder("CD_BACK"), fileName);
   }
 
   getCdBackImageSources(album) {
     const templateFile = this.getCdBackTemplateFileName(album);
-    const templateUrl = this.getLocalImageUrl("CD_TEMPLATE", templateFile);
+    const templateUrl = this.getLocalImageUrl(filesFolder("CD_TEMPLATE"), templateFile);
     const backFile = this.getCdBackFileName(album);
-    const backUrl = backFile ? this.getLocalImageUrl("FILES/CD_BACK", backFile) : "";
+    const backUrl = backFile ? this.getLocalImageUrl(filesFolder("CD_BACK"), backFile) : "";
     const forceBack = this.uiState.cdBackGlobalEnabled;
     const usesBack = forceBack ? Boolean(backUrl) : Number(album?.cd_back) > 0 && Boolean(backUrl);
     return {
@@ -5445,12 +5453,12 @@ class UiController {
     if (!this.uiState.appDirectory) return "";
     const fileName = this.getBookletFileName(album);
     if (!fileName) return "";
-    return buildPath(this.uiState.appDirectory, "BOOKLET", fileName);
+    return buildPath(this.uiState.appDirectory, filesFolder("BOOKLET"), fileName);
   }
 
   getAlbumCoverUrl(album, { size = "mini" } = {}) {
     const id = Number(album?.id_albumu);
-    const folderName = size === "max" ? "pic_max" : "pic_mini";
+    const folderName = filesFolder(size === "max" ? "pic_max" : "pic_mini");
     const prefix = size === "max" ? "max" : "mini";
     const fallback = `${prefix}_default.jpg`;
     const fileName = Number.isFinite(id) && id > 0 ? `${prefix}_${id}.jpg` : fallback;
@@ -5572,7 +5580,7 @@ class UiController {
       this.showStatusMessage("Brak pliku Booklet dla wybranego albumu.");
       return;
     }
-    const url = this.getLocalImageUrl("BOOKLET", fileName);
+    const url = this.getLocalImageUrl(filesFolder("BOOKLET"), fileName);
     this.showBookletPreview(url);
   }
 
@@ -5707,7 +5715,7 @@ class UiController {
     if (ratingValue > 0) {
       const ratingBadge = document.createElement("img");
       ratingBadge.className = "album-rating-overlay";
-      ratingBadge.src = `icons/${ratingValue}_STARS.svg`;
+      ratingBadge.src = this.getLocalImageUrl(filesFolder("icons"), `${ratingValue}_STARS.svg`);
       ratingBadge.alt = `${ratingValue} gwiazdek`;
       ratingBadge.setAttribute("aria-hidden", "true");
       coverWrap.appendChild(ratingBadge);
@@ -5724,7 +5732,7 @@ class UiController {
       bookletBtn.type = "button";
       bookletBtn.className = "album-booklet-btn";
       const bookletIcon = document.createElement("img");
-      bookletIcon.src = "icons/booklet.svg";
+      bookletIcon.src = this.getLocalImageUrl(filesFolder("icons"), "booklet.svg");
       bookletIcon.alt = "Booklet";
       bookletBtn.appendChild(bookletIcon);
       bookletBtn.addEventListener("click", async (event) => {
@@ -5797,7 +5805,7 @@ class UiController {
         formatIconBtn.type = "button";
         formatIconBtn.className = "album-format__icon";
         const formatIcon = document.createElement("img");
-        formatIcon.src = this.getLocalImageUrl("FORMAT", `format_${formatCode}.svg`);
+        formatIcon.src = this.getLocalImageUrl(filesFolder("FORMAT"), `format_${formatCode}.svg`);
         formatIcon.alt = "Format";
         formatIconBtn.appendChild(formatIcon);
         formatIconBtn.addEventListener("click", async (event) => {
@@ -5822,7 +5830,7 @@ class UiController {
     const code = LABEL_MAP.get(album.label) || "00A";
     const icon = document.createElement("img");
     icon.className = "album-label-icon";
-    icon.src = `LABELS/${code}.svg`;
+    icon.src = this.getLocalImageUrl(filesFolder("LABELS"), `${code}.svg`);
     icon.alt = album.label;
     icon.title = album.label;
     icon.addEventListener("click", (event) => {
@@ -6144,13 +6152,13 @@ class UiController {
       const status = document.createElement("img");
       status.className = "album-status-label";
       if (statusType === "coming-soon") {
-        status.src = "icons/etykieta_Coming_soon.svg";
+        status.src = this.getLocalImageUrl(filesFolder("icons"), "etykieta_Coming_soon.svg");
         status.alt = "Coming soon";
       } else if (statusType === "update") {
-        status.src = "icons/etykieta_UPDATE.svg";
+        status.src = this.getLocalImageUrl(filesFolder("icons"), "etykieta_UPDATE.svg");
         status.alt = "Update";
       } else {
-        status.src = "icons/etykieta_NEW.svg";
+        status.src = this.getLocalImageUrl(filesFolder("icons"), "etykieta_NEW.svg");
         status.alt = "New";
       }
       coverWrap.appendChild(status);
