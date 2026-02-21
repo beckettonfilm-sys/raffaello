@@ -371,7 +371,7 @@ function computeContainmentScore(sourceTokens, targetTokens) {
   return intersection / sourceSet.size;
 }
 
-async function loadLabelLookupFromExcel(appDirectory) {
+async function loadLabelLookupFromExcel(appDirectory, { logDiagnostics = false } = {}) {
   const filePath = getFilesPath(appDirectory, "download", "title_artist_label.xlsx");
   if (!(await pathExists(filePath))) return [];
 
@@ -384,10 +384,44 @@ async function loadLabelLookupFromExcel(appDirectory) {
       raw: false
     });
 
-    return rows.map((row, index) => {
-      const title = sanitizeJsonText(row?.title ?? row?.TITLE ?? "");
-      const artist = sanitizeJsonText(row?.artist ?? row?.ARTIST ?? "");
-      const label = sanitizeJsonText(row?.label ?? row?.LABEL ?? "");
+    const normalizeHeaderKey = (value) =>
+      String(value || "")
+        .toLowerCase()
+        .replace(/[\s_-]+/g, "")
+        .trim();
+
+    const buildRowHeaderMap = (row) => {
+      const headerMap = new Map();
+      Object.keys(row || {}).forEach((key) => {
+        const normalizedKey = normalizeHeaderKey(key);
+        if (normalizedKey && !headerMap.has(normalizedKey)) {
+          headerMap.set(normalizedKey, key);
+        }
+      });
+      return headerMap;
+    };
+
+    const getRowValueByAliases = (row, aliases) => {
+      const headerMap = buildRowHeaderMap(row);
+      for (const alias of aliases) {
+        const originalKey = headerMap.get(normalizeHeaderKey(alias));
+        if (originalKey) return row?.[originalKey];
+      }
+      return "";
+    };
+
+    const titleAliases = ["title", "TITLE", "album_title", "ALBUM_TITLE", "albumTitle", "Album Title"];
+    const artistAliases = ["artist", "ARTIST", "main_artists", "MAIN_ARTISTS", "mainArtists", "Main Artists"];
+    const labelAliases = ["label", "LABEL", "publisher", "PUBLISHER", "record_label", "RECORD_LABEL"];
+
+    let emptyTitleOrArtistCount = 0;
+
+    const lookupRows = rows.map((row, index) => {
+      const title = sanitizeJsonText(String(getRowValueByAliases(row, titleAliases) || ""));
+      const artist = sanitizeJsonText(String(getRowValueByAliases(row, artistAliases) || ""));
+      const label = sanitizeJsonText(String(getRowValueByAliases(row, labelAliases) || ""));
+      if (!title || !artist) emptyTitleOrArtistCount += 1;
+
       return {
         index,
         label,
@@ -395,6 +429,17 @@ async function loadLabelLookupFromExcel(appDirectory) {
         artistTokens: normalizeTokenSet(artist)
       };
     });
+
+    if (logDiagnostics) {
+      console.log(`[LabelMatch] XLSX: ${filePath}`);
+      console.log(`[LabelMatch] Lookup rows: ${lookupRows.length}, empty title/artist: ${emptyTitleOrArtistCount}`);
+    }
+
+    if (logDiagnostics && lookupRows.length > 0 && emptyTitleOrArtistCount / lookupRows.length > 0.8) {
+      console.warn("[LabelMatch] Ostrzeżenie: >80% lookup rows ma pusty title/artist. Sprawdź nagłówki kolumn w title_artist_label.xlsx");
+    }
+
+    return lookupRows;
   } catch (error) {
     console.warn("[Import JSON] Nie udało się odczytać title_artist_label.xlsx:", error?.message || error);
     return [];
@@ -1344,7 +1389,9 @@ function registerHandlers() {
     const collectionName = payload?.collectionName;
     const enableLabelMatch = payload?.enableLabelMatch === true;
     const appDirectory = getAppDirectory();
-    const labelLookupRows = enableLabelMatch ? await loadLabelLookupFromExcel(appDirectory) : [];
+    const labelLookupRows = enableLabelMatch
+      ? await loadLabelLookupFromExcel(appDirectory, { logDiagnostics: true })
+      : [];
 
     const source = await resolveJsonSourceFile({
       directory: targetDir,
