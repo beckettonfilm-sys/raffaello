@@ -415,6 +415,7 @@ class UiController {
       importDbBtn: null,
       importJsonBtn: null,
       qobuzScrapeBtn: null,
+      downloadNrBtn: null,
       exportDbBtn: null,
       updateDbBtn: null,
       heardMinDisplay: null,
@@ -484,6 +485,7 @@ class UiController {
       importDbBtn,
       importJsonBtn,
       qobuzScrapeBtn,
+      downloadNrBtn,
       updateDbBtn,
       exportDbBtn,
       searchInput,
@@ -547,6 +549,11 @@ class UiController {
     qobuzScrapeBtn?.addEventListener("click", () => {
       this.flashOptionButton(qobuzScrapeBtn);
       this.runQobuzScrape();
+    });
+
+    downloadNrBtn?.addEventListener("click", () => {
+      this.flashOptionButton(downloadNrBtn);
+      this.runDownloadNrWorkflow();
     });
 
     exportDbBtn?.addEventListener("click", () => {
@@ -1894,6 +1901,7 @@ class UiController {
     this.dom.exportDbBtn = makeOpButton("exportDbBtn", "EXPORT DB");
     this.dom.importJsonBtn = makeOpButton("importJsonBtn", "IMPORT JSON");
     this.dom.qobuzScrapeBtn = makeOpButton("qobuzScrapeBtn", "QOBUZ SCRAPE");
+    this.dom.downloadNrBtn = makeOpButton("downloadNrBtn", "Download NR");
     this.dom.downloadDbBtn = makeOpButton("downloadDbBtn", "SAVE XLSX");
     this.dom.downloadTxtBtn = makeOpButton("downloadTxtBtn", "SAVE TXT");
     const placeholder = document.createElement("div");
@@ -6793,30 +6801,50 @@ class UiController {
     }
   }
 
-  async importFromJson() {
+  async importFromJson(options = {}) {
     let modalMessage = "";
     let progressModal = null;
     let unsubscribe = () => {};
     try {
 
-      const directory = await this.getActiveDataDirectory("importJson");
+      const directory = options.directory || (await this.getActiveDataDirectory("importJson"));
       if (!directory) {
         return;
       }
 
-      let resolved = null;
-      try {
-        resolved = await resolveJsonFile({ directory });
-      } catch (error) {
-        resolved = null;
-      }
-      const selection = await this.openJsonImportDialog({
-        directory,
-        filePath: resolved?.filePath,
-        fileName: resolved?.fileName
-      });
-      if (!selection) {
-        return;
+      let selection = null;
+      if (options.skipSelectionDialog) {
+        let resolved = null;
+        try {
+          resolved = await resolveJsonFile({
+            directory,
+            filePath: options.autoSelectLatestFile ? null : options.filePath
+          });
+        } catch (_error) {
+          resolved = null;
+        }
+        if (!resolved) {
+          return;
+        }
+        selection = {
+          filePath: resolved.filePath,
+          fileName: resolved.fileName
+        };
+      } else {
+        let resolved = null;
+        try {
+          resolved = await resolveJsonFile({ directory });
+        } catch (error) {
+          resolved = null;
+        }
+        selection = await this.openJsonImportDialog({
+          directory,
+          filePath: resolved?.filePath,
+          fileName: resolved?.fileName
+        });
+        if (!selection) {
+          return;
+        }
       }
 
       this.startOperation("📥 Importuję dane z JSON do SQLite / bazy danych...");
@@ -6837,7 +6865,8 @@ class UiController {
       const response = await importJsonFromFile({
         directory,
         filePath: selection.filePath,
-        collectionName
+        collectionName,
+        enableLabelMatch: options.enableLabelMatch === true
       });
       unsubscribe();
       progressModal.close();
@@ -6861,7 +6890,8 @@ class UiController {
     }
   }
 
-  async runQobuzScrape() {
+
+  async executeQobuzScrapeStep() {
     let progressModal = null;
     let unsubscribe = () => {};
     try {
@@ -6890,14 +6920,56 @@ class UiController {
       const response = await runQobuzScraper({});
       console.log("[Qobuz Scraper] Result:", response);
       this.showStatusMessage("✅ Qobuz scrape done");
+      return true;
     } catch (error) {
       console.error("[Qobuz Scraper] Error:", error);
       this.showStatusMessage(`❌ Qobuz scrape error: ${error.message}`);
+      return false;
     } finally {
       unsubscribe();
       if (progressModal) progressModal.close();
       this.finishOperation();
     }
+  }
+
+  async runQobuzScrape() {
+    await this.executeQobuzScrapeStep();
+  }
+
+  async askDownloadNrContinue() {
+    return this.confirmModal({
+      title: "",
+      message: "Umieść w folderze UPDATE_JSON plik json z nowymi albumami, które chcesz dodać do bazy danych aplikacji.",
+      confirmText: "continue the process",
+      cancelText: "CANCEL"
+    });
+  }
+
+  async runDownloadNrWorkflow() {
+    const scrapeOk = await this.executeQobuzScrapeStep();
+    if (!scrapeOk) return;
+
+    const shouldContinue = await this.askDownloadNrContinue();
+    if (!shouldContinue) return;
+
+    let directory = "";
+    try {
+      if (!this.uiState.appDirectory) {
+        this.uiState.appDirectory = await getAppDirectory();
+      }
+      directory = this.getDefaultDirectory("importJson");
+      await resolveJsonFile({ directory });
+    } catch (_error) {
+      this.showStatusMessage("Brak pliku json w folderze UPDATE JSON.");
+      return;
+    }
+
+    await this.importFromJson({
+      directory,
+      autoSelectLatestFile: true,
+      enableLabelMatch: true,
+      skipSelectionDialog: true
+    });
   }
 
   getCustomFolderCount() {
