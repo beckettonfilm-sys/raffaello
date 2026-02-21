@@ -343,6 +343,8 @@ const LABEL_STOPWORDS = new Set(["the", "a", "an"]);
 
 function normalizeTokenSet(value) {
   const normalized = String(value || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
     .toLowerCase()
     .trim()
     .replace(/[‘’′]/g, "'")
@@ -446,49 +448,72 @@ async function loadLabelLookupFromExcel(appDirectory, { logDiagnostics = false }
   }
 }
 
-function resolveLabelForRecord({ title, artist, lookupRows }) {
+function resolveLabelForRecord({ title, artist, lookupRows, logDiagnostics = false }) {
   if (!Array.isArray(lookupRows) || !lookupRows.length) return "";
 
-  const artistSet = new Set(normalizeTokenSet(artist));
   const titleTokens = normalizeTokenSet(title);
+  const artistTokens = normalizeTokenSet(artist);
   const titleSet = new Set(titleTokens);
-  const artistSize = artistSet.size;
   const titleSize = titleSet.size;
-  if (!artistSize || !titleSize) return "";
+  if (!titleSize) return "";
 
-  const artistCandidates = lookupRows.filter((row) => {
-    const rowArtistSet = new Set(row.artistTokens || []);
-    if (rowArtistSet.size !== artistSize) return false;
-    for (const token of artistSet) {
-      if (!rowArtistSet.has(token)) return false;
-    }
-    return true;
-  });
-
-  if (!artistCandidates.length) return "";
-
-  const exactMatches = artistCandidates.filter((row) => {
-    const rowTitleSet = new Set(row.titleTokens || []);
-    if (rowTitleSet.size !== titleSize) return false;
+  const exactTitleMatches = lookupRows.filter((row) => {
+    const rowTitleTokens = row.titleTokens || [];
+    if (rowTitleTokens.length !== titleSize) return false;
+    const rowTitleSet = new Set(rowTitleTokens);
     for (const token of titleSet) {
       if (!rowTitleSet.has(token)) return false;
     }
     return true;
   });
 
-  if (exactMatches.length) {
-    return sanitizeJsonText(exactMatches[0]?.label);
+  if (exactTitleMatches.length === 1) {
+    return sanitizeJsonText(exactTitleMatches[0]?.label);
   }
 
-  if (titleTokens.length < 2) return "";
+  if (exactTitleMatches.length > 1) {
+    let exactBest = null;
+    for (const row of exactTitleMatches) {
+      const scoreA = artistTokens.length ? computeContainmentScore(artistTokens, row.artistTokens || []) : 0;
+      if (
+        !exactBest ||
+        scoreA > exactBest.scoreA ||
+        (scoreA === exactBest.scoreA && row.index < exactBest.index)
+      ) {
+        exactBest = { scoreA, index: row.index, label: row.label };
+      }
+    }
+    if (exactBest) return sanitizeJsonText(exactBest.label);
+  }
 
   let best = null;
-  for (const row of artistCandidates) {
-    const score = computeContainmentScore(titleTokens, row.titleTokens || []);
-    if (score < 0.9) continue;
-    if (!best || score > best.score || (score === best.score && row.index < best.index)) {
-      best = { score, index: row.index, label: row.label };
+  let bestSeenTitleScore = 0;
+  let bestSeenArtistScore = 0;
+  for (const row of lookupRows) {
+    const scoreT = computeContainmentScore(titleTokens, row.titleTokens || []);
+    if (scoreT > bestSeenTitleScore) bestSeenTitleScore = scoreT;
+    if (scoreT < 0.9) continue;
+
+    const scoreA = artistTokens.length ? computeContainmentScore(artistTokens, row.artistTokens || []) : 0;
+    if (scoreA > bestSeenArtistScore) bestSeenArtistScore = scoreA;
+
+    // title-first safety: >=0.95 accepts weak artist match; 0.90-0.95 requires artist guardrail.
+    const isMatch = scoreT >= 0.95 || (scoreT >= 0.9 && scoreT < 0.95 && scoreA >= 0.5);
+    if (!isMatch) continue;
+
+    if (
+      !best ||
+      scoreT > best.scoreT ||
+      (scoreT === best.scoreT && (scoreA > best.scoreA || (scoreA === best.scoreA && row.index < best.index)))
+    ) {
+      best = { scoreT, scoreA, index: row.index, label: row.label };
     }
+  }
+
+  if (!best && logDiagnostics) {
+    console.log(
+      `[LabelMatch] No label match for title="${sanitizeJsonText(title)}" artist="${sanitizeJsonText(artist)}" (exactTitleMatches=${exactTitleMatches.length}, bestScoreT=${bestSeenTitleScore.toFixed(3)}, bestScoreA=${bestSeenArtistScore.toFixed(3)})`
+    );
   }
 
   return best ? sanitizeJsonText(best.label) : "";
@@ -1388,6 +1413,7 @@ function registerHandlers() {
     await ensureDirectory(targetDir);
     const collectionName = payload?.collectionName;
     const enableLabelMatch = payload?.enableLabelMatch === true;
+    const labelMatchDiagnostics = payload?.labelMatchDiagnostics === true;
     const appDirectory = getAppDirectory();
     const labelLookupRows = enableLabelMatch
       ? await loadLabelLookupFromExcel(appDirectory, { logDiagnostics: true })
@@ -1492,7 +1518,12 @@ function registerHandlers() {
       }
 
       const matchedLabel = enableLabelMatch
-        ? resolveLabelForRecord({ title, artist, lookupRows: labelLookupRows })
+        ? resolveLabelForRecord({
+            title,
+            artist,
+            lookupRows: labelLookupRows,
+            logDiagnostics: labelMatchDiagnostics
+          })
         : "";
 
       albumsToInsert.push({
