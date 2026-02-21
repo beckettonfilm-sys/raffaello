@@ -19,3 +19,17 @@ Kanały IPC są obsługiwane w `main.js`, a tamtejsze funkcje używają modułu 
 npm start
 ```
 Aplikacja otworzy okno Electron i załaduje dotychczasowy interfejs. Wszystkie odczyty/zapisy danych będą trafiały do bazy SQLite, więc plik `ZAJEBISTE_DANE.xlsx` jest już potrzebny jedynie jako archiwum referencyjne.
+
+## Checklista testów manualnych po migracji `FILES/`
+1. Czy wyświetlają się ikony UI (lock, gwiazdki, booklet, etykiety)?
+2. Czy wyświetlają się labelki z `APP_DIR/FILES/LABELS`?
+3. Czy wyświetlają się ikony formatów z `APP_DIR/FILES/FORMAT`?
+4. Czy działają mini i max okładki (w tym pliki `mini_default.jpg` / `max_default.jpg`)?
+5. Czy działa generowanie mini okładek (mockup CD) z template w `APP_DIR/FILES/CD_TEMPLATE`?
+6. Czy działa CD BACK (template + własny back w `APP_DIR/FILES/CD_BACK`)?
+7. Czy działa booklet PDF z `APP_DIR/FILES/BOOKLET`?
+8. Czy import DB (XLSX) działa z `APP_DIR/FILES/DATABASE/MUSIC_DATABASE`?
+9. Czy import JSON działa z `APP_DIR/FILES/DATABASE/UPDATE_JSON`?
+10. Czy update DB działa z `APP_DIR/FILES/DATABASE/UPDATE_DATABASE`?
+11. Czy eksport DB i „download” zapisują do `APP_DIR/FILES/DATABASE/EXPORT_DATABASE`?
+12. Czy kasowanie assetów albumu usuwa właściwe pliki w `APP_DIR/FILES/pic_*` oraz `APP_DIR/FILES/CD_BACK`?
