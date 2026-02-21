@@ -1589,14 +1589,10 @@ class DataStore {
 
 export {
   DataStore,
-  DEFAULT_FOLDER_COLOR,
-  DEFAULT_CONTAINER_COLOR,
-  DEFAULT_EMPTY_COLOR,
   ALBUMS_PER_PAGE,
   CATEGORY_CLASSES,
   LABEL_HIERARCHY,
   LABEL_MAP,
-  setLabelHierarchy,
   formatStatusDate,
   formatDuration,
   truncateName

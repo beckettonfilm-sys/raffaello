@@ -5,5 +5,3 @@ const controller = new UiController();
 window.addEventListener("DOMContentLoaded", () => {
   controller.init();
 });
-
-export { controller };

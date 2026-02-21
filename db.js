@@ -1280,11 +1280,5 @@ module.exports = {
   renameFilterPreset,
   deleteFilterPreset,
   createDatabaseBackup,
-  TABLE_NAME,
-  COLLECTIONS_TABLE_NAME,
-  CONTAINERS_TABLE_NAME,
-  FOLDERS_TABLE_NAME,
-  ALBUM_FOLDERS_TABLE_NAME,
-  FILTER_TABLE_NAME,
-  resolvedConfig
+  TABLE_NAME
 };
