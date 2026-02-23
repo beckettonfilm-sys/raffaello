@@ -7180,7 +7180,7 @@ class UiController {
       this.showStatusMessage("Wybierz kontener do usunięcia.");
       return;
     }
-    if (!(await this.confirmModal({ title: "Potwierdź", message: `Czy na pewno usunąć kontener "${selected}"?`, confirmText: "TAK", cancelText: "NIE" }))) return;
+    if (!(await this.confirmModal({ title: "Potwierdź", message: `Czy na pewno usunąć kontener "${selected}" oraz wszystkie foldery, które są w nim zawarte?`, confirmText: "TAK", cancelText: "NIE" }))) return;
     this.removeContainer(selected);
     this.processAndRender();
     this.showStatusMessage("Kontener usunięty.");
@@ -7432,7 +7432,9 @@ class UiController {
       this.markFoldersPending();
     }
     this.rebuildContainerSelect();
+    this.rebuildFolderSelect();
     this.dom.containerSelect.value = "__all__";
+    this.dom.folderSelect.value = "__all__";
   }
 
   isValidEntityName(name) {
@@ -7642,3 +7644,12 @@ class UiController {
 }
 
 export { UiController };
+
+// DEV NOTES (manual test checklist)
+// 1) Utwórz kontener (np. "kontener_1") i przypisz do niego co najmniej 2 foldery.
+// 2) Przypisz albumy do tych folderów i potwierdź, że są widoczne w filtrach folder/kontener.
+// 3) Usuń kontener przez UI (OPTIONS -> DELETE), potwierdź modal i sprawdź, że kontener znika.
+// 4) Zweryfikuj, że wszystkie foldery należące do usuniętego kontenera też zniknęły.
+// 5) Zweryfikuj, że przypisania albumów do usuniętych folderów zostały wyczyszczone (brak wiszących referencji).
+// 6) Spróbuj usunąć "__all__" lub "brak" i potwierdź status: "Wybierz kontener do usunięcia.".
+// 7) Sprawdź, że po usunięciu selektory kontenera i folderu ustawiają się na "__all__".

@@ -1169,13 +1169,21 @@ class DataStore {
   }
 
   clearContainerAssignments(name) {
-    const target = sanitizeName(name) || "brak";
-    if (target === "brak") return { changed: false };
+    const target = sanitizeName(name);
+    if (!target || target === "brak") return { changed: false };
 
     let changed = false;
-    this.folderMeta.forEach((meta) => {
-      if (meta.container === target) {
-        meta.container = "brak";
+    const foldersToDelete = [];
+
+    this.folderMeta.forEach((meta, folderName) => {
+      if (meta?.container === target) {
+        foldersToDelete.push(folderName);
+      }
+    });
+
+    foldersToDelete.forEach((folderName) => {
+      const result = this.clearFolderAssignments(folderName);
+      if (result.changed) {
         changed = true;
       }
     });
@@ -1192,10 +1200,11 @@ class DataStore {
     if (this.containerMeta.has(target) || this.containersList.has(target)) {
       changed = true;
     }
+
     const collectionName = this.containerMeta.get(target)?.collection || "brak";
-    if (this.collectionMeta.has(collectionName)) {
-      this.collectionMeta.get(collectionName).containers?.delete(target);
-    }
+    const collectionEntry = this.collectionMeta.get(collectionName);
+    collectionEntry?.containers?.delete(target);
+
     this.containerMeta.delete(target);
     this.containersList.delete(target);
 
@@ -1597,3 +1606,12 @@ export {
   formatDuration,
   truncateName
 };
+
+// DEV NOTES (manual test checklist)
+// 1) Utwórz kontener (np. "kontener_1") i przypisz do niego co najmniej 2 foldery.
+// 2) Przypisz albumy do tych folderów i potwierdź, że są widoczne w filtrach folder/kontener.
+// 3) Usuń kontener przez UI (OPTIONS -> DELETE), potwierdź modal i sprawdź, że kontener znika.
+// 4) Zweryfikuj, że wszystkie foldery należące do usuniętego kontenera też zniknęły.
+// 5) Zweryfikuj, że przypisania albumów do usuniętych folderów zostały wyczyszczone (brak wiszących referencji).
+// 6) Spróbuj usunąć "__all__" lub "brak" i potwierdź status: "Wybierz kontener do usunięcia.".
+// 7) Sprawdź, że po usunięciu selektory kontenera i folderu ustawiają się na "__all__".
