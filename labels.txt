@@ -44,4 +44,7 @@
 44C - RCA Red Seal
 45C - London Philharmonic Orchestra
 46C - Bru Zane
+47C - Platoon
+48C - Berliner Philharmoniker
+49C - Delos
 99Z - unknown
