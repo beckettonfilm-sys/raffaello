@@ -4633,6 +4633,7 @@ class UiController {
         await saveFilterPreset(activeName, payload);
         await this.loadFilterPresets();
         this.setActiveFilterPreset(activeName);
+        this.persistActiveFilterPreset();
         this.showTransientStatus(`${activeName} został zapisany ${formatStatusDate(new Date())}`);
         await this.createAutoFilterFolder();
       } catch (error) {
@@ -4658,6 +4659,7 @@ class UiController {
       await saveFilterPreset(finalName, payload);
       await this.loadFilterPresets();
       this.setActiveFilterPreset(finalName);
+      this.persistActiveFilterPreset();
       this.showTransientStatus(`${finalName} został zapisany ${formatStatusDate(new Date())}`);
       await this.createAutoFilterFolder();
     } catch (error) {
@@ -4751,6 +4753,7 @@ class UiController {
   handlePresetSelectionChange(event) {
     const selected = event.target.value;
     this.uiState.activeFilterPreset = selected;
+    this.persistActiveFilterPreset();
     if (selected === "__none__") {
       this.clearAllFilters();
       return;
@@ -6119,12 +6122,22 @@ class UiController {
           this.showOfflineMessage();
           return;
         }
-        const tidalRunning = await this.isTidalRunning();
-        if (!tidalRunning) {
-          this.showStatusMessage(
-            "Aplikacja TIDAL nie jest uruchomiona na twoim komputerze. Uruchom najpierw aplikację TIDAL a następnie wybierz album, który ma zostać otwarty w tej aplikacji."
-          );
-          return;
+
+        // Manual test checklist (PPM + TIDAL):
+        // 1) macOS/Linux: PPM na albumie powinien próbować otworzyć tidal:// bez blokady procesu.
+        // 2) Windows: gdy TIDAL jest zamknięty, PPM pokazuje komunikat i nie otwiera albumu.
+        // 3) Windows: gdy TIDAL działa, PPM otwiera album i może wywołać maximizeTidalWindow.
+        // 4) Weryfikuj, że skróty klawiszowe i pozostały flow contextmenu działają jak wcześniej.
+        // 5) Link tidalProtocolLink powinien być budowany i używany bez zmian.
+        const isWin = /Win/i.test(navigator.platform) || /Windows/i.test(navigator.userAgent);
+        if (isWin) {
+          const tidalRunning = await this.isTidalRunning();
+          if (!tidalRunning) {
+            this.showStatusMessage(
+              "Aplikacja TIDAL nie jest uruchomiona na twoim komputerze. Uruchom najpierw aplikację TIDAL a następnie wybierz album, który ma zostać otwarty w tej aplikacji."
+            );
+            return;
+          }
         }
       }
       if (this.uiState.remixEnabled) {
@@ -6218,7 +6231,10 @@ class UiController {
 
   async isTidalRunning() {
     try {
-      return await isProcessRunning("TIDAL.exe");
+      const isMac = /Mac/i.test(navigator.platform) || /Mac OS X/i.test(navigator.userAgent);
+      const isWin = /Win/i.test(navigator.platform) || /Windows/i.test(navigator.userAgent);
+      const processName = isWin ? "TIDAL.exe" : isMac ? "TIDAL" : "TIDAL";
+      return await isProcessRunning(processName);
     } catch (error) {
       console.warn("Nie udało się sprawdzić procesu TIDAL:", error);
       return false;
