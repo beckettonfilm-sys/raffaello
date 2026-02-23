@@ -149,10 +149,47 @@ function isUrlSearchKey(value) {
   return /^https?:\/\//.test(value);
 }
 
+function normalizeForSearch(value) {
+  if (!value) return "";
+  return String(value)
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[_\-.–—]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
 function matchesSearchKey(album, searchKey) {
   if (!searchKey) return true;
-  const haystack = `${album.title || ""} ${album.artist || ""}`.toLowerCase();
-  if (haystack.includes(searchKey)) return true;
+
+  // Manual test checklist (SEARCH & DATA):
+  // 1) "Oliver Davis" i "Davis Oliver" powinny zwrócić te same albumy.
+  // 2) "Beyonce" musi znaleźć "Beyoncé" i odwrotnie.
+  // 3) "Oliver-Davis", "Oliver_Davis" i "Oliver   Davis" powinny działać podobnie.
+  // 4) Wyszukiwanie ma pozostać case-insensitive.
+  // 5) Wklejony URL/ID albumu nadal powinien działać jak wcześniej.
+  // 6) Krótkie zapytania jednowyrazowe nadal bazują na includes.
+
+  const normalizedSearchKey = normalizeForSearch(searchKey);
+  if (!normalizedSearchKey) {
+    const albumId = extractAlbumId(album.link);
+    const searchId = extractAlbumId(searchKey);
+    if (albumId && searchId && albumId === searchId) return true;
+    if (isUrlSearchKey(searchKey)) {
+      const normalizedSearch = normalizeLinkForSearch(searchKey);
+      const normalizedLink = normalizeLinkForSearch(album.link);
+      if (!normalizedLink) return false;
+      return (
+        normalizedSearch.startsWith(normalizedLink) ||
+        normalizedLink.startsWith(normalizedSearch)
+      );
+    }
+    return false;
+  }
+  const haystack = normalizeForSearch(`${album.title || ""} ${album.artist || ""}`);
+  if (haystack.includes(normalizedSearchKey)) return true;
+
   const albumId = extractAlbumId(album.link);
   const searchId = extractAlbumId(searchKey);
   if (albumId && searchId && albumId === searchId) return true;
@@ -165,6 +202,12 @@ function matchesSearchKey(album, searchKey) {
       normalizedLink.startsWith(normalizedSearch)
     );
   }
+
+  const tokens = normalizedSearchKey.split(" ").filter(Boolean);
+  if (tokens.length >= 2) {
+    return tokens.every((token) => haystack.includes(token));
+  }
+
   return false;
 }
 
