@@ -5754,12 +5754,18 @@ class UiController {
     const titleText = document.createElement("span");
     titleText.style.minWidth = "0";
     titleText.textContent = album.title;
+    if (typeof album.title === "string" && album.title.trim()) {
+      titleText.title = album.title;
+    }
 
     titleRow.appendChild(titleText);
 
     const artist = document.createElement("div");
     artist.className = "album-artist";
     artist.textContent = album.artist;
+    if (typeof album.artist === "string" && album.artist.trim()) {
+      artist.title = album.artist;
+    }
 
     const meta = document.createElement("div");
     meta.className = "album-meta";
