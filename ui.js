@@ -5523,6 +5523,31 @@ class UiController {
     this.dom.bookletPreviewFrame = frame;
   }
 
+  buildPdfFitToWidthUrl(url) {
+    if (!url) return url;
+
+    const separatorIndex = url.indexOf("#");
+    if (separatorIndex === -1) {
+      return `${url}#zoom=page-width&view=FitH`;
+    }
+
+    const base = url.slice(0, separatorIndex);
+    const fragment = url.slice(separatorIndex + 1);
+    const parts = fragment ? fragment.split("&").filter(Boolean) : [];
+
+    const hasZoom = parts.some((part) => /^zoom=/i.test(part));
+    const hasView = parts.some((part) => /^view=/i.test(part));
+
+    if (!hasZoom) {
+      parts.push("zoom=page-width");
+    }
+    if (!hasView) {
+      parts.push("view=FitH");
+    }
+
+    return `${base}#${parts.join("&")}`;
+  }
+
   showCoverPreview(album) {
     if (!album) return;
     this.ensureCoverPreview();
@@ -5545,9 +5570,18 @@ class UiController {
     this.ensureBookletPreview();
     const { bookletPreview, bookletPreviewFrame } = this.dom;
     if (!bookletPreview || !bookletPreviewFrame) return;
-    bookletPreviewFrame.src = url;
+    const fitted = this.buildPdfFitToWidthUrl(url);
+    bookletPreviewFrame.src = "about:blank";
+    requestAnimationFrame(() => {
+      bookletPreviewFrame.src = fitted;
+    });
     bookletPreview.classList.add("is-visible");
   }
+
+  // DEV NOTES (manual):
+  // 1) Otwórz booklet wielokrotnie dla różnych albumów i potwierdź domyślne dopasowanie do szerokości.
+  // 2) Zamknij i otwórz ponownie — sprawdź, czy podgląd nadal startuje z dopasowaniem.
+  // 3) Zweryfikuj działanie zamykania overlay (X/klik poza) bez zmian względem poprzedniego zachowania.
 
   hideCoverPreview() {
     const { coverPreview, coverPreviewImage } = this.dom;
