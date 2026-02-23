@@ -2270,6 +2270,36 @@ main::-webkit-scrollbar {
   display: flex;
 }
 
+.preview-close {
+  position: absolute;
+  top: 14px;
+  right: 14px;
+  width: 38px;
+  height: 38px;
+  min-width: 34px;
+  min-height: 34px;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  background: rgba(0, 0, 0, 0.35);
+  color: #fff;
+  font-size: 26px;
+  line-height: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  z-index: 95;
+}
+
+.preview-close:hover {
+  background: rgba(0, 0, 0, 0.55);
+}
+
+.preview-close:focus {
+  outline: 2px solid rgba(255, 255, 255, 0.35);
+  outline-offset: 2px;
+}
+
 .booklet-preview__content {
   width: min(90vw, 1100px);
   height: min(90vh, 820px);

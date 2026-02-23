@@ -5479,12 +5479,39 @@ class UiController {
     };
   }
 
+  withPdfFitWidth(url) {
+    if (!url) return url;
+    const hashIndex = url.indexOf("#");
+    if (hashIndex === -1) return `${url}#zoom=page-width`;
+    const hash = url.slice(hashIndex + 1);
+    if (/\b(?:zoom|view)\s*=/.test(hash)) return url;
+    const separator = hash.length > 0 ? "&" : "";
+    return `${url}${separator}zoom=page-width`;
+  }
+
+  // DEV NOTES (testy manualne):
+  // 1) O + LPM na albumie -> podgląd okładki z przyciskiem X; X zamyka; klik overlay też zamyka.
+  // 2) Podgląd bookletu -> X zamyka; klik poza content zamyka; klik w content/iframe nie zamyka.
+  // 3) Booklet otwiera się domyślnie jako dopasowany do szerokości (page-width).
+  // 4) Sprawdzić, że istniejące skróty/zdarzenia działają bez zmian.
+
   ensureCoverPreview() {
     if (this.dom.coverPreview) return;
     const overlay = document.createElement("div");
     overlay.className = "cover-preview";
     const image = document.createElement("img");
     image.className = "cover-preview__image";
+    const closeBtn = document.createElement("button");
+    closeBtn.type = "button";
+    closeBtn.className = "preview-close";
+    closeBtn.setAttribute("aria-label", "Zamknij");
+    closeBtn.textContent = "×";
+    closeBtn.addEventListener("click", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      this.hideCoverPreview();
+    });
+    overlay.appendChild(closeBtn);
     overlay.appendChild(image);
     const close = (event) => {
       event.preventDefault();
@@ -5496,6 +5523,7 @@ class UiController {
     document.body.appendChild(overlay);
     this.dom.coverPreview = overlay;
     this.dom.coverPreviewImage = image;
+    this.dom.coverPreviewCloseBtn = closeBtn;
   }
 
   ensureBookletPreview() {
@@ -5508,7 +5536,18 @@ class UiController {
     frame.className = "booklet-preview__frame";
     frame.setAttribute("title", "Booklet");
     frame.setAttribute("loading", "lazy");
+    const closeBtn = document.createElement("button");
+    closeBtn.type = "button";
+    closeBtn.className = "preview-close";
+    closeBtn.setAttribute("aria-label", "Zamknij");
+    closeBtn.textContent = "×";
+    closeBtn.addEventListener("click", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      this.hideBookletPreview();
+    });
     content.appendChild(frame);
+    overlay.appendChild(closeBtn);
     overlay.appendChild(content);
     const close = (event) => {
       event.preventDefault();
@@ -5521,6 +5560,7 @@ class UiController {
     document.body.appendChild(overlay);
     this.dom.bookletPreview = overlay;
     this.dom.bookletPreviewFrame = frame;
+    this.dom.bookletPreviewCloseBtn = closeBtn;
   }
 
   showCoverPreview(album) {
@@ -5545,7 +5585,7 @@ class UiController {
     this.ensureBookletPreview();
     const { bookletPreview, bookletPreviewFrame } = this.dom;
     if (!bookletPreview || !bookletPreviewFrame) return;
-    bookletPreviewFrame.src = url;
+    bookletPreviewFrame.src = this.withPdfFitWidth(url);
     bookletPreview.classList.add("is-visible");
   }
 
