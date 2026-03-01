@@ -43,6 +43,8 @@ let dbFilePath;
 const QOBUZ_GENERAL_DEFAULTS = {
   date_from: "01.01.2020",
   date_to: "31.12.2030",
+  new_releases_auto: 1,
+  last_download_nr_at: "",
   min_minutes: 15,
   genre_root: "Classical",
   delay_listing: 0.35,
@@ -557,9 +559,19 @@ async function ensureSchema() {
       max_pages_per_label INTEGER NOT NULL,
       retries INTEGER NOT NULL,
       timeout_ms INTEGER NOT NULL,
+      new_releases_auto INTEGER NOT NULL DEFAULT 1,
+      last_download_nr_at TEXT NULL,
       updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
     )`
   );
+
+  const qobuzGeneralColumns = getColumnSet(await all(db, `PRAGMA table_info("${QOBUZ_GENERAL_TABLE_NAME}")`));
+  if (!qobuzGeneralColumns.has("new_releases_auto")) {
+    await run(db, `ALTER TABLE "${QOBUZ_GENERAL_TABLE_NAME}" ADD COLUMN new_releases_auto INTEGER NOT NULL DEFAULT 1`);
+  }
+  if (!qobuzGeneralColumns.has("last_download_nr_at")) {
+    await run(db, `ALTER TABLE "${QOBUZ_GENERAL_TABLE_NAME}" ADD COLUMN last_download_nr_at TEXT NULL`);
+  }
 
   await run(
     db,
@@ -584,8 +596,9 @@ async function ensureSchema() {
     await run(
       db,
       `INSERT INTO "${QOBUZ_GENERAL_TABLE_NAME}" (
-        id, date_from, date_to, min_minutes, genre_root, delay_listing, delay_album, max_pages_per_label, retries, timeout_ms
-      ) VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        id, date_from, date_to, min_minutes, genre_root, delay_listing, delay_album, max_pages_per_label, retries, timeout_ms,
+        new_releases_auto, last_download_nr_at
+      ) VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         QOBUZ_GENERAL_DEFAULTS.date_from,
         QOBUZ_GENERAL_DEFAULTS.date_to,
@@ -595,7 +608,9 @@ async function ensureSchema() {
         QOBUZ_GENERAL_DEFAULTS.delay_album,
         QOBUZ_GENERAL_DEFAULTS.max_pages_per_label,
         QOBUZ_GENERAL_DEFAULTS.retries,
-        QOBUZ_GENERAL_DEFAULTS.timeout_ms
+        QOBUZ_GENERAL_DEFAULTS.timeout_ms,
+        QOBUZ_GENERAL_DEFAULTS.new_releases_auto,
+        QOBUZ_GENERAL_DEFAULTS.last_download_nr_at
       ]
     );
   }
@@ -612,6 +627,22 @@ async function ensureSchema() {
       );
     }
   }
+}
+
+function getLastFridayStart(date = new Date()) {
+  const base = new Date(date);
+  base.setHours(0, 0, 1, 0);
+  const day = base.getDay();
+  const distanceFromFriday = (day - 5 + 7) % 7;
+  base.setDate(base.getDate() - distanceFromFriday);
+  return base;
+}
+
+function getNewReleasesStatus(lastDownloadNrAt = "", now = new Date()) {
+  const parsed = lastDownloadNrAt ? new Date(lastDownloadNrAt) : null;
+  if (!parsed || !Number.isFinite(parsed.getTime())) return "AVAILABLE";
+  const fridayStart = getLastFridayStart(now);
+  return parsed.getTime() >= fridayStart.getTime() ? "NOT AVAILABLE" : "AVAILABLE";
 }
 
 const COLUMN_MAP = [
@@ -1418,7 +1449,8 @@ async function fetchQobuzScrapeSettings() {
   const db = await getDatabase();
   const general = await get(
     db,
-    `SELECT date_from, date_to, min_minutes, genre_root, delay_listing, delay_album, max_pages_per_label, retries, timeout_ms
+    `SELECT date_from, date_to, min_minutes, genre_root, delay_listing, delay_album, max_pages_per_label, retries, timeout_ms,
+            new_releases_auto, last_download_nr_at
      FROM "${QOBUZ_GENERAL_TABLE_NAME}" WHERE id = 1`
   );
   const labels = await all(
@@ -1430,7 +1462,10 @@ async function fetchQobuzScrapeSettings() {
   return {
     general: {
       ...QOBUZ_GENERAL_DEFAULTS,
-      ...(general || {})
+      ...(general || {}),
+      new_releases_auto: Number(general?.new_releases_auto) ? 1 : 0,
+      last_download_nr_at: String(general?.last_download_nr_at || ""),
+      new_releases_status: getNewReleasesStatus(general?.last_download_nr_at || "")
     },
     labels: labels.map((row) => ({
       id: row.id,
@@ -1456,7 +1491,9 @@ async function saveQobuzScrapeSettings(payload = {}) {
     delay_album: Number.parseFloat(generalPayload.delay_album),
     max_pages_per_label: Number.parseInt(generalPayload.max_pages_per_label, 10),
     retries: Number.parseInt(generalPayload.retries, 10),
-    timeout_ms: Number.parseInt(generalPayload.timeout_ms, 10)
+    timeout_ms: Number.parseInt(generalPayload.timeout_ms, 10),
+    new_releases_auto: Number(generalPayload.new_releases_auto) ? 1 : 0,
+    last_download_nr_at: String(generalPayload.last_download_nr_at || "").trim()
   };
 
   if (!Number.isFinite(general.min_minutes)) general.min_minutes = QOBUZ_GENERAL_DEFAULTS.min_minutes;
@@ -1471,8 +1508,9 @@ async function saveQobuzScrapeSettings(payload = {}) {
     await run(
       db,
       `INSERT INTO "${QOBUZ_GENERAL_TABLE_NAME}" (
-        id, date_from, date_to, min_minutes, genre_root, delay_listing, delay_album, max_pages_per_label, retries, timeout_ms, updated_at
-      ) VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+        id, date_from, date_to, min_minutes, genre_root, delay_listing, delay_album, max_pages_per_label, retries, timeout_ms, updated_at,
+        new_releases_auto, last_download_nr_at
+      ) VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, ?, ?)
       ON CONFLICT(id) DO UPDATE SET
         date_from = excluded.date_from,
         date_to = excluded.date_to,
@@ -1483,6 +1521,8 @@ async function saveQobuzScrapeSettings(payload = {}) {
         max_pages_per_label = excluded.max_pages_per_label,
         retries = excluded.retries,
         timeout_ms = excluded.timeout_ms,
+        new_releases_auto = excluded.new_releases_auto,
+        last_download_nr_at = excluded.last_download_nr_at,
         updated_at = CURRENT_TIMESTAMP`,
       [
         general.date_from,
@@ -1493,7 +1533,9 @@ async function saveQobuzScrapeSettings(payload = {}) {
         general.delay_album,
         general.max_pages_per_label,
         general.retries,
-        general.timeout_ms
+        general.timeout_ms,
+        general.new_releases_auto,
+        general.last_download_nr_at
       ]
     );
 
@@ -1522,6 +1564,18 @@ async function saveQobuzScrapeSettings(payload = {}) {
   }
 }
 
+
+async function markDownloadNrUsed(timestamp = new Date().toISOString()) {
+  const db = await getDatabase();
+  await run(
+    db,
+    `UPDATE "${QOBUZ_GENERAL_TABLE_NAME}"
+     SET last_download_nr_at = ?, updated_at = CURRENT_TIMESTAMP
+     WHERE id = 1`,
+    [String(timestamp || "").trim()]
+  );
+}
+
 module.exports = {
   ensureSchema,
   fetchAlbums,
@@ -1541,6 +1595,7 @@ module.exports = {
   deleteFilterPreset,
   fetchQobuzScrapeSettings,
   saveQobuzScrapeSettings,
+  markDownloadNrUsed,
   createDatabaseBackup,
   TABLE_NAME
 };

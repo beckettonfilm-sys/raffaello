@@ -22,6 +22,7 @@ const {
   deleteFilterPreset,
   fetchQobuzScrapeSettings,
   saveQobuzScrapeSettings,
+  markDownloadNrUsed,
   createDatabaseBackup,
   TABLE_NAME
 } = require("./db");
@@ -67,6 +68,21 @@ function getFilesPath(appDirectory = getAppDirectory(), ...segments) {
     .filter(Boolean)
     .flatMap((segment) => segment.split("/").filter(Boolean));
   return path.join(getFilesRoot(appDirectory), ...normalizedSegments);
+}
+
+function parsePlDate(value = "") {
+  const match = String(value || "").trim().match(/^(\d{2})\.(\d{2})\.(\d{4})$/);
+  if (!match) return null;
+  const [, dd, mm, yyyy] = match;
+  const date = new Date(Number(yyyy), Number(mm) - 1, Number(dd), 0, 0, 0, 0);
+  return Number.isFinite(date.getTime()) ? date : null;
+}
+
+function formatPlDate(date) {
+  const d = new Date(date);
+  if (!Number.isFinite(d.getTime())) return "";
+  const pad = (v) => String(v).padStart(2, "0");
+  return `${pad(d.getDate())}.${pad(d.getMonth() + 1)}.${d.getFullYear()}`;
 }
 
 async function pathExists(targetPath) {
@@ -1647,6 +1663,12 @@ function registerHandlers() {
     return { status: "ok" };
   });
 
+  ipcMain.handle("mark-download-nr-used", async () => {
+    await ensureSchema();
+    await markDownloadNrUsed();
+    return { status: "ok" };
+  });
+
   ipcMain.handle("run-qobuz-scraper", async (event, payload = {}) => {
     const sendProgress = (progressPayload) => {
       event.sender.send("qobuz-scrape-progress", progressPayload);
@@ -1655,10 +1677,27 @@ function registerHandlers() {
     try {
       await ensureSchema();
       const qobuzSettings = await fetchQobuzScrapeSettings();
+      const general = { ...(qobuzSettings?.general || {}) };
+      if (Number(general.new_releases_auto) === 1) {
+        const today = new Date();
+        const lastDownload = general.last_download_nr_at ? new Date(general.last_download_nr_at) : null;
+        if (lastDownload && Number.isFinite(lastDownload.getTime())) {
+          const from = new Date(lastDownload);
+          from.setDate(from.getDate() + 1);
+          general.date_from = formatPlDate(from);
+        } else {
+          const fallbackDateFrom = parsePlDate(general.date_from);
+          general.date_from = formatPlDate(fallbackDateFrom || today);
+        }
+        general.date_to = formatPlDate(today);
+      }
       return await runQobuzScraper({
         appRootOverride: payload?.appRootOverride,
         dryRun: payload?.dryRun === true,
-        qobuzSettings,
+        qobuzSettings: {
+          ...qobuzSettings,
+          general
+        },
         emitProgress: sendProgress
       });
     } catch (error) {

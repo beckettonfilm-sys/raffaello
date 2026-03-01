@@ -2503,7 +2503,35 @@ main::-webkit-scrollbar {
 
 .qobuz-settings__body {
   max-height: 60vh;
-  overflow: auto;
+  overflow: hidden;
+}
+
+.qobuz-tabs-wrap {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.qobuz-labels-pager {
+  display: none;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  margin: 0 0 10px;
+}
+
+.qobuz-page-value {
+  min-width: 120px;
+  width: auto;
+  padding: 0 14px;
+}
+
+.qobuz-page-value__text {
+  transform: skew(21deg);
+  font-weight: 800;
+  letter-spacing: 0.4px;
+  white-space: nowrap;
 }
 
 .qobuz-help {
@@ -2526,7 +2554,8 @@ main::-webkit-scrollbar {
   top: 20px;
   left: 0;
   min-width: 260px;
-  max-width: 380px;
+  max-width: 420px;
+  white-space: pre-line;
   background: rgba(8, 8, 8, 0.95);
   color: #fff;
   border: 1px solid rgba(255, 255, 255, 0.2);
@@ -2554,5 +2583,44 @@ main::-webkit-scrollbar {
   min-width: 36px;
   padding: 6px;
   font-size: 18px;
+  line-height: 1;
+}
+
+.qobuz-general-input {
+  width: 64px;
+}
+
+.qobuz-auto-row {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.qobuz-auto-range {
+  width: 210px;
+  min-width: 210px;
+}
+
+.qobuz-status-field {
+  width: 170px;
+  font-weight: 800;
+  text-align: center;
+}
+
+.qobuz-status-field.is-available,
+.qobuz-add-btn {
+  background: #83DD62;
+  color: #10220e;
+}
+
+.qobuz-status-field.is-not-available,
+.qobuz-remove-btn {
+  background: #DD6362;
+  color: #fff;
+}
+
+.qobuz-add-btn {
+  min-width: 42px;
+  font-size: 24px;
   line-height: 1;
 }

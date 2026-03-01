@@ -78,6 +78,16 @@ async function saveQobuzSettings(settings = {}) {
   return response;
 }
 
+
+async function markDownloadNrUsed() {
+  const api = ensureElectronAPI();
+  const response = await api.markDownloadNrUsed();
+  if (!response || response.status !== "ok") {
+    throw new Error(response?.error || "Nie udało się zapisać momentu Download NR");
+  }
+  return response;
+}
+
 async function runQobuzScraper(options = {}) {
   const api = ensureElectronAPI();
   const response = await api.runQobuzScraper(options);
@@ -279,6 +289,7 @@ export {
   importJsonFromFile,
   fetchQobuzSettings,
   saveQobuzSettings,
+  markDownloadNrUsed,
   runQobuzScraper,
   selectDirectory,
   selectFile,

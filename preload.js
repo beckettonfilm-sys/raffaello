@@ -10,6 +10,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
   runQobuzScraper: (payload = {}) => ipcRenderer.invoke("run-qobuz-scraper", payload),
   fetchQobuzSettings: () => ipcRenderer.invoke("fetch-qobuz-settings"),
   saveQobuzSettings: (payload = {}) => ipcRenderer.invoke("save-qobuz-settings", payload),
+  markDownloadNrUsed: () => ipcRenderer.invoke("mark-download-nr-used"),
   selectDirectory: (payload = {}) => ipcRenderer.invoke("select-directory", payload),
   selectFile: (payload = {}) => ipcRenderer.invoke("select-file", payload),
   getAppDirectory: () => ipcRenderer.invoke("get-app-directory"),
