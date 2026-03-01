@@ -20,6 +20,8 @@ const {
   saveFilterPreset,
   renameFilterPreset,
   deleteFilterPreset,
+  fetchQobuzScrapeSettings,
+  saveQobuzScrapeSettings,
   createDatabaseBackup,
   TABLE_NAME
 } = require("./db");
@@ -1632,15 +1634,31 @@ function registerHandlers() {
       errorFoldersCreated
     };
   });
+
+  ipcMain.handle("fetch-qobuz-settings", async () => {
+    await ensureSchema();
+    const settings = await fetchQobuzScrapeSettings();
+    return { status: "ok", settings };
+  });
+
+  ipcMain.handle("save-qobuz-settings", async (_event, payload = {}) => {
+    await ensureSchema();
+    await saveQobuzScrapeSettings(payload?.settings || {});
+    return { status: "ok" };
+  });
+
   ipcMain.handle("run-qobuz-scraper", async (event, payload = {}) => {
     const sendProgress = (progressPayload) => {
       event.sender.send("qobuz-scrape-progress", progressPayload);
     };
 
     try {
+      await ensureSchema();
+      const qobuzSettings = await fetchQobuzScrapeSettings();
       return await runQobuzScraper({
         appRootOverride: payload?.appRootOverride,
         dryRun: payload?.dryRun === true,
+        qobuzSettings,
         emitProgress: sendProgress
       });
     } catch (error) {

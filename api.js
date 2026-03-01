@@ -59,6 +59,25 @@ async function importJsonFromFile(options = {}) {
   return response;
 }
 
+
+async function fetchQobuzSettings() {
+  const api = ensureElectronAPI();
+  const response = await api.fetchQobuzSettings();
+  if (!response || response.status !== "ok") {
+    throw new Error(response?.error || "Nie udało się pobrać ustawień Qobuz");
+  }
+  return response.settings || {};
+}
+
+async function saveQobuzSettings(settings = {}) {
+  const api = ensureElectronAPI();
+  const response = await api.saveQobuzSettings({ settings });
+  if (!response || response.status !== "ok") {
+    throw new Error(response?.error || "Nie udało się zapisać ustawień Qobuz");
+  }
+  return response;
+}
+
 async function runQobuzScraper(options = {}) {
   const api = ensureElectronAPI();
   const response = await api.runQobuzScraper(options);
@@ -258,6 +277,8 @@ export {
   importWorkbookFromFile,
   importNewsWorkbookFromFile,
   importJsonFromFile,
+  fetchQobuzSettings,
+  saveQobuzSettings,
   runQobuzScraper,
   selectDirectory,
   selectFile,

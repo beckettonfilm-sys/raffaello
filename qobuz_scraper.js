@@ -6,6 +6,8 @@ const { fetch } = require("undici");
 const XLSX = require("xlsx");
 
 const DEFAULTS = {
+  date_from: "01.01.2020",
+  date_to: "31.12.2030",
   min_minutes: 15,
   delay_listing: 0.35,
   delay_album: 0.55,
@@ -15,7 +17,6 @@ const DEFAULTS = {
   genre_root: "Classical",
   accept_language: "en-US,en;q=0.9",
   user_agent: "ElectronQobuzScraper/1.0",
-  labels_file: "labels_scrapper.txt"
 };
 
 const OUTPUT_FILES = {
@@ -451,17 +452,21 @@ async function fetchHtml(url, config, stats) {
       clearTimeout(timeout);
 
       if (response.status === 429) {
-        const backoff = 2000 * (2 ** (attempt - 1));
-        console.warn(`[Qobuz Scraper] 429 Too Many Requests: ${url}, retry za ${backoff}ms`);
-        await sleep(backoff);
-        continue;
+        if (attempt < config.retries) {
+          const backoff = 2000 * (2 ** (attempt - 1));
+          console.warn(`[Qobuz Scraper] 429 Too Many Requests: ${url}, retry za ${backoff}ms`);
+          await sleep(backoff);
+          continue;
+        }
       }
 
       if (response.status >= 500 && response.status < 600) {
-        const backoff = 1000 * (2 ** (attempt - 1));
-        console.warn(`[Qobuz Scraper] HTTP ${response.status}: ${url}, retry za ${backoff}ms`);
-        await sleep(backoff);
-        continue;
+        if (attempt < config.retries) {
+          const backoff = 1000 * (2 ** (attempt - 1));
+          console.warn(`[Qobuz Scraper] HTTP ${response.status}: ${url}, retry za ${backoff}ms`);
+          await sleep(backoff);
+          continue;
+        }
       }
 
       if (response.status !== 200) {
@@ -473,7 +478,7 @@ async function fetchHtml(url, config, stats) {
       return await response.text();
     } catch (error) {
       lastError = error;
-      if (attempt > config.retries) break;
+      if (attempt >= config.retries) break;
       const backoff = 1000 * (2 ** (attempt - 1));
       console.warn(`[Qobuz Scraper] Błąd sieci (${attempt}/${config.retries}): ${error.message}, retry za ${backoff}ms`);
       await sleep(backoff);
@@ -488,11 +493,10 @@ function emitProgress(emit, payload) {
   if (typeof emit === "function") emit(payload);
 }
 
-async function runQobuzScraper({ appRootOverride, dryRun = false, emitProgress: progressEmitter } = {}) {
+async function runQobuzScraper({ appRootOverride, dryRun = false, qobuzSettings = {}, emitProgress: progressEmitter } = {}) {
   const started = Date.now();
   const appRoot = path.resolve(appRootOverride || process.cwd());
   const filesDir = path.join(appRoot, "FILES");
-  const inputPath = path.join(filesDir, "plik_wejsciowy.txt");
 
   const stats = {
     labelsTotal: 0,
@@ -509,14 +513,39 @@ async function runQobuzScraper({ appRootOverride, dryRun = false, emitProgress: 
     parseErrors: 0
   };
 
-  emitProgress(progressEmitter, { phase: "init", percent: 1, message: "Reading input..." });
-  const config = parseInputConfig(inputPath);
-  const labelsPath = path.join(filesDir, config.labels_file);
+  emitProgress(progressEmitter, { phase: "init", percent: 1, message: "Reading settings..." });
+  const general = qobuzSettings?.general || {};
+  const config = {
+    ...DEFAULTS,
+    ...general,
+    date_from: parsePlDate(String(general.date_from || DEFAULTS.date_from || "01.01.2020"), "date_from"),
+    date_to: parsePlDate(String(general.date_to || DEFAULTS.date_to || "31.12.2030"), "date_to")
+  };
+
+  const numSpec = [
+    ["min_minutes", true, 1],
+    ["delay_listing", false, 0],
+    ["delay_album", false, 0],
+    ["max_pages_per_label", true, 1],
+    ["retries", true, 1],
+    ["timeout_ms", true, 1000]
+  ];
+  for (const [key, isInt, min] of numSpec) {
+    const parsedValue = isInt ? Number.parseInt(config[key], 10) : Number.parseFloat(String(config[key]).replace(",", "."));
+    config[key] = Number.isFinite(parsedValue) && parsedValue >= min ? parsedValue : DEFAULTS[key];
+  }
+  config.genre_root = String(config.genre_root || DEFAULTS.genre_root).trim() || DEFAULTS.genre_root;
+  config.accept_language = String(DEFAULTS.accept_language);
+  config.user_agent = String(DEFAULTS.user_agent);
+
+  if (config.date_from.getTime() > config.date_to.getTime()) {
+    const tmp = config.date_from;
+    config.date_from = config.date_to;
+    config.date_to = tmp;
+  }
 
   console.log("[Qobuz Scraper] Start konfiguracji:", {
     appRoot,
-    inputPath,
-    labelsPath,
     date_from: formatPlDate(config.date_from),
     date_to: formatPlDate(config.date_to),
     min_minutes: config.min_minutes,
@@ -529,7 +558,10 @@ async function runQobuzScraper({ appRootOverride, dryRun = false, emitProgress: 
   });
 
   emitProgress(progressEmitter, { phase: "labels", percent: 3, message: "Loading labels..." });
-  const labels = parseLabelsFile(labelsPath);
+  const labels = (Array.isArray(qobuzSettings?.labels) ? qobuzSettings.labels : [])
+    .filter((label) => Number(label?.is_active) === 1)
+    .map((label) => ({ name: String(label?.name || "").trim(), url: String(label?.url || "").trim() }))
+    .filter((label) => label.name && label.url);
   stats.labelsTotal = labels.length;
 
   const listingLimiter = new Bottleneck({ maxConcurrent: 1, minTime: Math.max(0, config.delay_listing * 1000) });
@@ -549,7 +581,13 @@ async function runQobuzScraper({ appRootOverride, dryRun = false, emitProgress: 
       percent: Math.min(40, 5 + Math.round(((i + 1) / Math.max(1, labels.length)) * 35))
     });
 
-    const normalized = normalizeLabelBase(label.url);
+    let normalized = "";
+    try {
+      normalized = normalizeLabelBase(label.url);
+    } catch (error) {
+      console.warn(`[Qobuz Scraper] Pomijam label z nieprawidłowym linkiem: ${label.name} (${label.url})`);
+      continue;
+    }
     for (let page = 1; page <= config.max_pages_per_label; page += 1) {
       if (page > 1 && config.max_pages_per_label <= 1) break;
       const pageUrl = buildLabelPageUrl(normalized, page);
