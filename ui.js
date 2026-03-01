@@ -15,6 +15,8 @@ import {
   importWorkbookFromFile,
   importNewsWorkbookFromFile,
   importJsonFromFile,
+  fetchQobuzSettings,
+  saveQobuzSettings,
   runQobuzScraper,
   deleteAlbumAssets,
   selectDirectory,
@@ -415,6 +417,7 @@ class UiController {
       importDbBtn: null,
       importJsonBtn: null,
       qobuzScrapeBtn: null,
+      qobuzSettingsBtn: null,
       downloadNrBtn: null,
       exportDbBtn: null,
       updateDbBtn: null,
@@ -485,6 +488,7 @@ class UiController {
       importDbBtn,
       importJsonBtn,
       qobuzScrapeBtn,
+      qobuzSettingsBtn,
       downloadNrBtn,
       updateDbBtn,
       exportDbBtn,
@@ -549,6 +553,11 @@ class UiController {
     qobuzScrapeBtn?.addEventListener("click", () => {
       this.flashOptionButton(qobuzScrapeBtn);
       this.runQobuzScrape();
+    });
+
+    qobuzSettingsBtn?.addEventListener("click", () => {
+      this.flashOptionButton(qobuzSettingsBtn);
+      this.openQobuzSettingsDialog();
     });
 
     downloadNrBtn?.addEventListener("click", () => {
@@ -1901,6 +1910,7 @@ class UiController {
     this.dom.exportDbBtn = makeOpButton("exportDbBtn", "EXPORT DB");
     this.dom.importJsonBtn = makeOpButton("importJsonBtn", "IMPORT JSON");
     this.dom.qobuzScrapeBtn = makeOpButton("qobuzScrapeBtn", "QOBUZ SCRAPE");
+    this.dom.qobuzSettingsBtn = makeOpButton("qobuzSettingsBtn", "SETTINGS");
     this.dom.downloadNrBtn = makeOpButton("downloadNrBtn", "Download NR");
     this.dom.downloadDbBtn = makeOpButton("downloadDbBtn", "SAVE XLSX");
     this.dom.downloadTxtBtn = makeOpButton("downloadTxtBtn", "SAVE TXT");
@@ -4614,6 +4624,287 @@ class UiController {
         }
       }, 0);
     });
+  }
+
+
+  async openQobuzSettingsDialog() {
+    let settings;
+    try {
+      settings = await fetchQobuzSettings();
+    } catch (error) {
+      this.showStatusMessage(`❌ Nie udało się pobrać SETTINGS: ${error.message}`);
+      return;
+    }
+
+    const helpTexts = {
+      date_from: "Dolna granica daty wydania albumu. Albumy wydane wcześniej niż ta data są pomijane. To podstawowy filtr zawężający scraping do wybranego okresu.",
+      date_to: "Górna granica daty wydania albumu. Albumy wydane później niż ta data są pomijane. Razem z date_from tworzy pełny zakres dat.",
+      min_minutes: "Minimalna długość albumu w minutach. Krótsze wydania są odrzucane. Przydatne do pomijania singli, bardzo krótkich EP-ek i materiałów, które nie pasują do głównego celu zbierania albumów.",
+      genre_root: "Główny gatunek, który ma zostać zaakceptowany. Scraper przepuszcza tylko albumy zgodne z tym filtrem gatunkowym. To ustawienie pozwala zawęzić wyniki np. do muzyki klasycznej.",
+      delay_listing: "Opóźnienie pomiędzy pobieraniem stron listingów labeli. Zmniejsza tempo requestów i może pomóc ograniczyć problemy z przeciążeniem, timeoutami i odpowiedziami anty-botowymi.",
+      delay_album: "Opóźnienie pomiędzy pobieraniem stron pojedynczych albumów. Działa podobnie jak delay_listing, ale dotyczy etapu pobierania szczegółów albumów.",
+      max_pages_per_label: "Maksymalna liczba stron listingu przeszukiwanych dla jednej wytwórni. Ogranicza zakres scrapingu, czas działania i liczbę pobranych danych.",
+      retries: "Maksymalna liczba prób ponowienia requestu po błędzie sieciowym lub czasowej niedostępności. Zwiększa odporność scrapera na chwilowe problemy z połączeniem.",
+      timeout_ms: "Maksymalny czas oczekiwania na odpowiedź HTTP w milisekundach. Po przekroczeniu tego czasu request jest przerywany. Zbyt niski timeout może powodować częstsze błędy przy wolnych odpowiedziach, a zbyt wysoki może wydłużać oczekiwanie na problematyczne linki."
+    };
+
+    const state = {
+      activeTab: "general",
+      general: { ...(settings?.general || {}) },
+      labels: Array.isArray(settings?.labels) ? settings.labels.map((label) => ({ ...label })) : []
+    };
+
+    const toDateParts = (text) => {
+      const m = String(text || "").match(/^(\d{2})\.(\d{2})\.(\d{4})$/);
+      return m ? [m[1], m[2], m[3]] : ["", "", ""];
+    };
+
+    document.querySelectorAll(".modal-overlay").forEach((el) => el.remove());
+    const overlay = document.createElement("div");
+    overlay.className = "modal-overlay";
+    const card = document.createElement("div");
+    card.className = "modal-card modal-card--wide qobuz-settings";
+    const heading = document.createElement("h4");
+    heading.className = "modal-title";
+    heading.textContent = "SETTINGS";
+
+    const tabs = document.createElement("div");
+    tabs.className = "filter-tabs";
+    const generalBtn = document.createElement("button");
+    generalBtn.className = "filter-tab__btn active";
+    generalBtn.type = "button";
+    generalBtn.textContent = "GENERAL";
+    const labelsBtn = document.createElement("button");
+    labelsBtn.className = "filter-tab__btn";
+    labelsBtn.type = "button";
+    labelsBtn.textContent = "LABELS";
+    tabs.appendChild(generalBtn);
+    tabs.appendChild(labelsBtn);
+
+    const body = document.createElement("div");
+    body.className = "modal-form qobuz-settings__body";
+    const actions = document.createElement("div");
+    actions.className = "modal-actions";
+    const cancelBtn = document.createElement("button");
+    cancelBtn.type = "button";
+    cancelBtn.className = "modal-btn modal-btn--cancel";
+    cancelBtn.textContent = "ANULUJ";
+    const saveBtn = document.createElement("button");
+    saveBtn.type = "button";
+    saveBtn.className = "modal-btn modal-btn--confirm";
+    saveBtn.textContent = "SAVE";
+    actions.appendChild(cancelBtn);
+    actions.appendChild(saveBtn);
+
+    const createLockBtn = (isLocked = true, onToggle = () => {}) => {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "modal-lock-btn";
+      const icon = document.createElement("img");
+      button.appendChild(icon);
+      const apply = (locked) => {
+        icon.src = this.getLocalImageUrl(filesFolder("icons"), locked ? "lock_icon_OFF.svg" : "lock_icon_ON.svg");
+        button.title = locked ? "Odblokuj pola" : "Zablokuj pola";
+      };
+      apply(isLocked);
+      button.addEventListener("click", () => {
+        isLocked = !isLocked;
+        apply(isLocked);
+        onToggle(isLocked);
+      });
+      return button;
+    };
+
+    const createHelp = (text) => {
+      const wrap = document.createElement("span");
+      wrap.className = "qobuz-help";
+      wrap.textContent = "i";
+      wrap.dataset.tooltip = text;
+      return wrap;
+    };
+
+    const renderGeneral = () => {
+      body.innerHTML = "";
+      const fields = [
+        ["date_from", "DATE FROM"],
+        ["date_to", "DATE TO"],
+        ["min_minutes", "MIN MINUTES"],
+        ["genre_root", "GENRE ROOT"],
+        ["delay_listing", "DELAY LISTING"],
+        ["delay_album", "DELAY ALBUM"],
+        ["max_pages_per_label", "MAX PAGES PER LABEL"],
+        ["retries", "RETRIES"],
+        ["timeout_ms", "TIMEOUT MS"]
+      ];
+
+      fields.forEach(([key, label]) => {
+        const row = document.createElement("div");
+        row.className = "modal-form-row";
+        const rowLabel = document.createElement("label");
+        rowLabel.className = "modal-form-label";
+        rowLabel.textContent = label;
+        rowLabel.appendChild(createHelp(helpTexts[key]));
+        row.appendChild(rowLabel);
+
+        const wrap = document.createElement("div");
+        wrap.className = "modal-input-lock";
+
+        if (key === "date_from" || key === "date_to") {
+          const dateWrap = document.createElement("div");
+          dateWrap.className = "modal-input-group";
+          const [d, m, y] = toDateParts(state.general[key]);
+          const inputs = [d, m, y].map((val, idx) => {
+            const input = document.createElement("input");
+            input.type = "text";
+            input.maxLength = idx === 2 ? 4 : 2;
+            input.value = val;
+            input.className = "modal-input modal-input--segment modal-input--locked";
+            input.readOnly = true;
+            dateWrap.appendChild(input);
+            if (idx < 2) {
+              const sep = document.createElement("span");
+              sep.className = "modal-input-separator";
+              sep.textContent = ".";
+              dateWrap.appendChild(sep);
+            }
+            return input;
+          });
+          wrap.appendChild(dateWrap);
+          wrap.appendChild(createLockBtn(true, (locked) => {
+            inputs.forEach((input) => {
+              input.readOnly = locked;
+              input.classList.toggle("modal-input--locked", locked);
+            });
+          }));
+          state.general[key] = `${inputs[0].value}.${inputs[1].value}.${inputs[2].value}`;
+          inputs.forEach((input) => input.addEventListener("input", () => {
+            state.general[key] = `${inputs[0].value}.${inputs[1].value}.${inputs[2].value}`;
+          }));
+        } else {
+          const input = document.createElement("input");
+          input.type = "text";
+          input.className = "modal-input modal-input--row modal-input--locked";
+          input.value = state.general[key] ?? "";
+          input.readOnly = true;
+          wrap.appendChild(input);
+          wrap.appendChild(createLockBtn(true, (locked) => {
+            input.readOnly = locked;
+            input.classList.toggle("modal-input--locked", locked);
+          }));
+          input.addEventListener("input", () => {
+            state.general[key] = input.value;
+          });
+        }
+
+        row.appendChild(wrap);
+        body.appendChild(row);
+      });
+    };
+
+    const renderLabels = () => {
+      body.innerHTML = "";
+      const addRow = document.createElement("div");
+      addRow.className = "modal-actions";
+      const addBtn = document.createElement("button");
+      addBtn.type = "button";
+      addBtn.className = "modal-btn";
+      addBtn.textContent = "ADD";
+      addBtn.addEventListener("click", () => {
+        state.labels.push({ name: "", url: "", is_active: 1, is_locked: 0 });
+        renderLabels();
+      });
+      addRow.appendChild(addBtn);
+      body.appendChild(addRow);
+
+      state.labels.forEach((label, index) => {
+        const row = document.createElement("div");
+        row.className = "qobuz-label-row";
+        row.classList.toggle("is-disabled", Number(label.is_active) !== 1);
+
+        const nameInput = document.createElement("input");
+        nameInput.type = "text";
+        nameInput.className = "modal-input modal-input--row";
+        nameInput.value = label.name || "";
+        nameInput.readOnly = Number(label.is_locked) === 1;
+        nameInput.classList.toggle("modal-input--locked", nameInput.readOnly);
+
+        const urlInput = document.createElement("input");
+        urlInput.type = "text";
+        urlInput.className = "modal-input modal-input--row";
+        urlInput.value = label.url || "";
+        urlInput.readOnly = Number(label.is_locked) === 1;
+        urlInput.classList.toggle("modal-input--locked", urlInput.readOnly);
+
+        nameInput.addEventListener("input", () => { state.labels[index].name = nameInput.value; });
+        urlInput.addEventListener("input", () => { state.labels[index].url = urlInput.value; });
+
+        const lockBtn = createLockBtn(Number(label.is_locked) === 1, (locked) => {
+          state.labels[index].is_locked = locked ? 1 : 0;
+          nameInput.readOnly = locked;
+          urlInput.readOnly = locked;
+          nameInput.classList.toggle("modal-input--locked", locked);
+          urlInput.classList.toggle("modal-input--locked", locked);
+        });
+
+        const toggle = this.createSwitch({ leftLabel: "OFF", rightLabel: "ON", defaultRight: Number(label.is_active) === 1, compact: true });
+        this.updateSwitchLabels(toggle.input, toggle.leftLabel, toggle.rightLabel);
+        toggle.input.addEventListener("change", () => {
+          state.labels[index].is_active = toggle.input.checked ? 1 : 0;
+          row.classList.toggle("is-disabled", !toggle.input.checked);
+          this.updateSwitchLabels(toggle.input, toggle.leftLabel, toggle.rightLabel);
+        });
+
+        const removeBtn = document.createElement("button");
+        removeBtn.type = "button";
+        removeBtn.className = "modal-btn qobuz-remove-btn";
+        removeBtn.textContent = "−";
+        removeBtn.addEventListener("click", async () => {
+          const yes = await this.confirmModal({ title: "Usuń label", message: "Czy na pewno usunąć ten rekord?", confirmText: "USUŃ" });
+          if (!yes) return;
+          state.labels.splice(index, 1);
+          renderLabels();
+        });
+
+        row.appendChild(nameInput);
+        row.appendChild(urlInput);
+        row.appendChild(lockBtn);
+        row.appendChild(toggle.wrapper);
+        row.appendChild(removeBtn);
+        body.appendChild(row);
+      });
+    };
+
+    const switchTab = (tab) => {
+      state.activeTab = tab;
+      generalBtn.classList.toggle("active", tab === "general");
+      labelsBtn.classList.toggle("active", tab === "labels");
+      if (tab === "general") renderGeneral();
+      else renderLabels();
+    };
+
+    generalBtn.addEventListener("click", () => switchTab("general"));
+    labelsBtn.addEventListener("click", () => switchTab("labels"));
+    cancelBtn.addEventListener("click", () => overlay.remove());
+    saveBtn.addEventListener("click", async () => {
+      try {
+        await saveQobuzSettings({
+          general: state.general,
+          labels: state.labels.map((label, sortOrder) => ({ ...label, sort_order: sortOrder }))
+        });
+        overlay.remove();
+        this.showStatusMessage("✅ Zapisano SETTINGS QOBUZ SCRAPE");
+      } catch (error) {
+        await this.infoModal({ message: `Nie udało się zapisać ustawień: ${error.message}` });
+      }
+    });
+
+    card.appendChild(heading);
+    card.appendChild(tabs);
+    card.appendChild(body);
+    card.appendChild(actions);
+    overlay.appendChild(card);
+    document.body.appendChild(overlay);
+    switchTab("general");
   }
 
   getRemixPresetName(name) {

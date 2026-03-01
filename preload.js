@@ -8,6 +8,8 @@ contextBridge.exposeInMainWorld("electronAPI", {
   importNewsXlsx: (payload = {}) => ipcRenderer.invoke("import-news-xlsx", payload),
   importJson: (payload = {}) => ipcRenderer.invoke("import-json", payload),
   runQobuzScraper: (payload = {}) => ipcRenderer.invoke("run-qobuz-scraper", payload),
+  fetchQobuzSettings: () => ipcRenderer.invoke("fetch-qobuz-settings"),
+  saveQobuzSettings: (payload = {}) => ipcRenderer.invoke("save-qobuz-settings", payload),
   selectDirectory: (payload = {}) => ipcRenderer.invoke("select-directory", payload),
   selectFile: (payload = {}) => ipcRenderer.invoke("select-file", payload),
   getAppDirectory: () => ipcRenderer.invoke("get-app-directory"),

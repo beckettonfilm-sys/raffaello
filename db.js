@@ -29,6 +29,8 @@ const resolvedConfig = {
 
 const TABLE_NAME = resolvedConfig.table || "zajebiste_dane";
 const FILTER_TABLE_NAME = "filtr_data";
+const QOBUZ_GENERAL_TABLE_NAME = "qobuz_scrape_general";
+const QOBUZ_LABELS_TABLE_NAME = "qobuz_scrape_labels";
 const COLLECTIONS_TABLE_NAME = "collections";
 const CONTAINERS_TABLE_NAME = "containers";
 const FOLDERS_TABLE_NAME = "folders";
@@ -37,6 +39,74 @@ const DB_PREFIX = "music_database";
 const BACKUP_DIR = path.join(__dirname, "BACKUP_DB");
 let dbInstance;
 let dbFilePath;
+
+const QOBUZ_GENERAL_DEFAULTS = {
+  date_from: "01.01.2020",
+  date_to: "31.12.2030",
+  min_minutes: 15,
+  genre_root: "Classical",
+  delay_listing: 0.35,
+  delay_album: 0.55,
+  max_pages_per_label: 2,
+  retries: 3,
+  timeout_ms: 20000
+};
+
+const QOBUZ_INITIAL_LABELS = [
+  ["Alpha Classics", "https://www.qobuz.com/us-en/label/alpha-classics-1/download-streaming-albums/1950819?ssf%5BsortBy%5D=main_catalog_date_desc"],
+  ["Chandos", "https://www.qobuz.com/us-en/label/chandos-2/download-streaming-albums/7525501?ssf%5BsortBy%5D=main_catalog_date_desc"],
+  ["Decca Music Group Ltd.", "https://www.qobuz.com/us-en/label/decca-music-group-ltd/download-streaming-albums/80295?ssf%5BsortBy%5D=main_catalog_date_desc"],
+  ["Deutsche Grammophon (DG)", "https://www.qobuz.com/us-en/label/deutsche-grammophon/download-streaming-albums/80905?ssf%5BsortBy%5D=main_catalog_date_desc"],
+  ["ECM New Series", "https://www.qobuz.com/us-en/label/ecm-new/download-streaming-albums/1171?ssf%5BsortBy%5D=main_catalog_date_desc"],
+  ["Harmonia mundi", "https://www.qobuz.com/us-en/label/harmonia-mundi-5/download-streaming-albums/1319264?ssf%5BsortBy%5D=main_catalog_date_desc"],
+  ["LSO Live", "https://www.qobuz.com/us-en/label/lso-live-1/download-streaming-albums/1687967?ssf%5BsortBy%5D=main_catalog_date_desc"],
+  ["Sony Classical", "https://www.qobuz.com/us-en/label/sony-classical/download-streaming-albums/4608?ssf%5BsortBy%5D=main_catalog_date_desc"],
+  ["Naxos", "https://www.qobuz.com/us-en/label/naxos-6/download-streaming-albums/7373533?ssf%5BsortBy%5D=main_catalog_date_desc"],
+  ["Aparté", "https://www.qobuz.com/us-en/label/aparte-2/download-streaming-albums/235540?ssf%5BsortBy%5D=main_catalog_date_desc"],
+  ["PENTATONE", "https://www.qobuz.com/us-en/label/pentatone-2/download-streaming-albums/4627006?ssf%5BsortBy%5D=main_catalog_date_desc"],
+  ["Signum Records", "https://www.qobuz.com/us-en/label/signum-records/download-streaming-albums/1680?ssf%5BsortBy%5D=main_catalog_date_desc"],
+  ["Lawo Classics", "https://www.qobuz.com/us-en/label/lawo-classics/download-streaming-albums/305024?ssf%5BsortBy%5D=main_catalog_date_desc"],
+  ["Orchid Classics", "https://www.qobuz.com/us-en/label/orchid-classics-4/download-streaming-albums/9641794?ssf%5BsortBy%5D=main_catalog_date_desc"],
+  ["Fuga Libera", "https://www.qobuz.com/us-en/label/fuga-libera-4/download-streaming-albums/1950869?ssf%5BsortBy%5D=main_catalog_date_desc"],
+  ["Ondine", "https://www.qobuz.com/us-en/label/ondine-3/download-streaming-albums/7373432?ssf%5BsortBy%5D=main_catalog_date_desc"],
+  ["Evidence Classics", "https://www.qobuz.com/us-en/label/evidence-classics/download-streaming-albums/6009410?ssf%5BsortBy%5D=main_catalog_date_desc"],
+  ["Navona", "https://www.qobuz.com/us-en/label/navona-5/download-streaming-albums/7374964?ssf%5BsortBy%5D=main_catalog_date_desc"],
+  ["Ricercar", "https://www.qobuz.com/us-en/label/ricercar-3/download-streaming-albums/1950905?ssf%5BsortBy%5D=main_catalog_date_desc"],
+  ["Nonesuch", "https://www.qobuz.com/us-en/label/nonesuch/download-streaming-albums/7418?ssf%5BsortBy%5D=main_catalog_date_desc"],
+  ["Hyperion", "https://www.qobuz.com/us-en/label/hyperion-8/download-streaming-albums/5156010?ssf%5BsortBy%5D=main_catalog_date_desc"],
+  ["Warner Classics / Erato", "https://www.qobuz.com/us-en/label/warner-classics/download-streaming-albums/8400?ssf%5BsortBy%5D=main_catalog_date_desc"],
+  ["Delphian Records", "https://www.qobuz.com/us-en/label/delphian-records/download-streaming-albums/3289?ssf%5BsortBy%5D=main_catalog_date_desc"],
+  ["Linn Records", "https://www.qobuz.com/us-en/label/linn-records-4/download-streaming-albums/1950872?ssf%5BsortBy%5D=main_catalog_date_desc"],
+  ["Berlin Classics", "https://www.qobuz.com/us-en/label/berlin-classics-1/download-streaming-albums/30388?ssf%5BsortBy%5D=main_catalog_date_desc"],
+  ["AVIE Records", "https://www.qobuz.com/us-en/label/avie-records/download-streaming-albums/14824?ssf%5BsortBy%5D=main_catalog_date_desc"],
+  ["Channel Classics", "https://www.qobuz.com/us-en/label/channel-classics/download-streaming-albums/4246334?ssf%5BsortBy%5D=main_catalog_date_desc"],
+  ["Arcana", "https://www.qobuz.com/us-en/label/arcana-7/download-streaming-albums/1950820?ssf%5BsortBy%5D=main_catalog_date_desc"],
+  ["Rubicon", "https://www.qobuz.com/us-en/label/rubicon-2/download-streaming-albums/1481934?ssf%5BsortBy%5D=main_catalog_date_desc"],
+  ["Mirare", "https://www.qobuz.com/us-en/label/mirare-6/download-streaming-albums/1383764?ssf%5BsortBy%5D=main_catalog_date_desc"],
+  ["CPO", "https://www.qobuz.com/us-en/label/cpo-2/download-streaming-albums/381478?ssf%5BsortBy%5D=main_catalog_date_desc"],
+  ["Brilliant Classics", "https://www.qobuz.com/us-en/label/brilliant-classics-2/download-streaming-albums/39450?ssf%5BsortBy%5D=main_catalog_date_desc"],
+  ["Capriccio", "https://www.qobuz.com/us-en/label/capriccionr-3/download-streaming-albums/7374961?ssf%5BsortBy%5D=main_catalog_date_desc"],
+  ["BR-Klassik", "https://www.qobuz.com/us-en/label/br-klassik-3/download-streaming-albums/7373476?ssf%5BsortBy%5D=main_catalog_date_desc"],
+  ["Resonus Classics", "https://www.qobuz.com/us-en/label/resonus-classics-2/download-streaming-albums/73621?ssf%5BsortBy%5D=main_catalog_date_desc"],
+  ["Onyx Classics", "https://www.qobuz.com/us-en/label/onyx-classics-1/download-streaming-albums/42060?ssf%5BsortBy%5D=main_catalog_date_desc"],
+  ["First Hand Records", "https://www.qobuz.com/us-en/label/first-hand-records-2/download-streaming-albums/7374222?ssf%5BsortBy%5D=main_catalog_date_desc"],
+  ["Piano Classics", "https://www.qobuz.com/us-en/label/piano-classics-1/download-streaming-albums/104866?ssf%5BsortBy%5D=main_catalog_date_desc"],
+  ["Hänssler CLASSIC", "https://www.qobuz.com/us-en/label/haenssler-classic-2/download-streaming-albums/7375131?ssf%5BsortBy%5D=main_catalog_date_desc"],
+  ["Grand Piano", "https://www.qobuz.com/us-en/label/grand-piano-5/download-streaming-albums/7374669?ssf%5BsortBy%5D=main_catalog_date_desc"],
+  ["Bright Shiny Things", "https://www.qobuz.com/us-en/label/bright-shiny-things/download-streaming-albums/999251?ssf%5BsortBy%5D=main_catalog_date_desc"],
+  ["Naive", "https://www.qobuz.com/us-en/label/naive-6/download-streaming-albums/149707?ssf%5BsortBy%5D=main_catalog_date_desc"],
+  ["Platoon", "https://www.qobuz.com/us-en/label/platoon-1/download-streaming-albums/191819?ssf%5BsortBy%5D=main_catalog_date_desc"],
+  ["Berliner Philharmoniker", "https://www.qobuz.com/us-en/label/berliner-philharmoniker-recordings-2/download-streaming-albums/3045426?ssf%5BsortBy%5D=main_catalog_date_desc"],
+  ["Delos", "https://www.qobuz.com/us-en/label/delos-8/download-streaming-albums/9057527?ssf%5BsortBy%5D=main_catalog_date_desc"],
+  ["Bru Zane", "https://www.qobuz.com/us-en/label/bru-zane-2/download-streaming-albums/1950938?ssf%5BsortBy%5D=main_catalog_date_desc"]
+].reduce((acc, [name, url]) => {
+  const key = `${name}||${url}`;
+  if (!acc.seen.has(key)) {
+    acc.seen.add(key);
+    acc.items.push({ name, url });
+  }
+  return acc;
+}, { seen: new Set(), items: [] }).items;
 
 function formatTimestampForFileName(date = new Date()) {
   const pad = (value) => String(value).padStart(2, "0");
@@ -141,6 +211,18 @@ function all(db, sql, params = []) {
         return;
       }
       resolve(rows || []);
+    });
+  });
+}
+
+function get(db, sql, params = []) {
+  return new Promise((resolve, reject) => {
+    db.get(sql, params, (error, row) => {
+      if (error) {
+        reject(error);
+        return;
+      }
+      resolve(row || null);
     });
   });
 }
@@ -461,6 +543,75 @@ async function ensureSchema() {
       UPDATE "${FILTER_TABLE_NAME}" SET updated_at = CURRENT_TIMESTAMP WHERE id = NEW.id;
     END;`
   );
+
+  await run(
+    db,
+    `CREATE TABLE IF NOT EXISTS "${QOBUZ_GENERAL_TABLE_NAME}" (
+      id INTEGER PRIMARY KEY CHECK (id = 1),
+      date_from TEXT NOT NULL,
+      date_to TEXT NOT NULL,
+      min_minutes INTEGER NOT NULL,
+      genre_root TEXT NOT NULL,
+      delay_listing REAL NOT NULL,
+      delay_album REAL NOT NULL,
+      max_pages_per_label INTEGER NOT NULL,
+      retries INTEGER NOT NULL,
+      timeout_ms INTEGER NOT NULL,
+      updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+    )`
+  );
+
+  await run(
+    db,
+    `CREATE TABLE IF NOT EXISTS "${QOBUZ_LABELS_TABLE_NAME}" (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      sort_order INTEGER NOT NULL DEFAULT 0,
+      name TEXT NOT NULL,
+      url TEXT NOT NULL,
+      is_active INTEGER NOT NULL DEFAULT 1,
+      is_locked INTEGER NOT NULL DEFAULT 1,
+      updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+    )`
+  );
+
+  await run(
+    db,
+    `CREATE INDEX IF NOT EXISTS "idx_${QOBUZ_LABELS_TABLE_NAME}_sort_order" ON "${QOBUZ_LABELS_TABLE_NAME}" (sort_order)`
+  );
+
+  const generalRow = await get(db, `SELECT id FROM "${QOBUZ_GENERAL_TABLE_NAME}" WHERE id = 1`);
+  if (!generalRow) {
+    await run(
+      db,
+      `INSERT INTO "${QOBUZ_GENERAL_TABLE_NAME}" (
+        id, date_from, date_to, min_minutes, genre_root, delay_listing, delay_album, max_pages_per_label, retries, timeout_ms
+      ) VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        QOBUZ_GENERAL_DEFAULTS.date_from,
+        QOBUZ_GENERAL_DEFAULTS.date_to,
+        QOBUZ_GENERAL_DEFAULTS.min_minutes,
+        QOBUZ_GENERAL_DEFAULTS.genre_root,
+        QOBUZ_GENERAL_DEFAULTS.delay_listing,
+        QOBUZ_GENERAL_DEFAULTS.delay_album,
+        QOBUZ_GENERAL_DEFAULTS.max_pages_per_label,
+        QOBUZ_GENERAL_DEFAULTS.retries,
+        QOBUZ_GENERAL_DEFAULTS.timeout_ms
+      ]
+    );
+  }
+
+  const labelsCountRow = await get(db, `SELECT COUNT(1) AS count FROM "${QOBUZ_LABELS_TABLE_NAME}"`);
+  if (!Number(labelsCountRow?.count)) {
+    for (let index = 0; index < QOBUZ_INITIAL_LABELS.length; index += 1) {
+      const label = QOBUZ_INITIAL_LABELS[index];
+      await run(
+        db,
+        `INSERT INTO "${QOBUZ_LABELS_TABLE_NAME}" (sort_order, name, url, is_active, is_locked)
+         VALUES (?, ?, ?, 1, 1)`,
+        [index, label.name, label.url]
+      );
+    }
+  }
 }
 
 const COLUMN_MAP = [
@@ -1262,6 +1413,115 @@ async function replaceFolderData({ collections = [], containers = [], folders = 
   }
 }
 
+
+async function fetchQobuzScrapeSettings() {
+  const db = await getDatabase();
+  const general = await get(
+    db,
+    `SELECT date_from, date_to, min_minutes, genre_root, delay_listing, delay_album, max_pages_per_label, retries, timeout_ms
+     FROM "${QOBUZ_GENERAL_TABLE_NAME}" WHERE id = 1`
+  );
+  const labels = await all(
+    db,
+    `SELECT id, sort_order, name, url, is_active, is_locked
+     FROM "${QOBUZ_LABELS_TABLE_NAME}"
+     ORDER BY sort_order ASC, id ASC`
+  );
+  return {
+    general: {
+      ...QOBUZ_GENERAL_DEFAULTS,
+      ...(general || {})
+    },
+    labels: labels.map((row) => ({
+      id: row.id,
+      sort_order: row.sort_order,
+      name: row.name || "",
+      url: row.url || "",
+      is_active: Number(row.is_active) ? 1 : 0,
+      is_locked: Number(row.is_locked) ? 1 : 0
+    }))
+  };
+}
+
+async function saveQobuzScrapeSettings(payload = {}) {
+  const db = await getDatabase();
+  const generalPayload = payload?.general || {};
+  const labelsPayload = Array.isArray(payload?.labels) ? payload.labels : [];
+  const general = {
+    date_from: String(generalPayload.date_from || QOBUZ_GENERAL_DEFAULTS.date_from).trim() || QOBUZ_GENERAL_DEFAULTS.date_from,
+    date_to: String(generalPayload.date_to || QOBUZ_GENERAL_DEFAULTS.date_to).trim() || QOBUZ_GENERAL_DEFAULTS.date_to,
+    min_minutes: Number.parseInt(generalPayload.min_minutes, 10),
+    genre_root: String(generalPayload.genre_root || QOBUZ_GENERAL_DEFAULTS.genre_root).trim() || QOBUZ_GENERAL_DEFAULTS.genre_root,
+    delay_listing: Number.parseFloat(generalPayload.delay_listing),
+    delay_album: Number.parseFloat(generalPayload.delay_album),
+    max_pages_per_label: Number.parseInt(generalPayload.max_pages_per_label, 10),
+    retries: Number.parseInt(generalPayload.retries, 10),
+    timeout_ms: Number.parseInt(generalPayload.timeout_ms, 10)
+  };
+
+  if (!Number.isFinite(general.min_minutes)) general.min_minutes = QOBUZ_GENERAL_DEFAULTS.min_minutes;
+  if (!Number.isFinite(general.delay_listing)) general.delay_listing = QOBUZ_GENERAL_DEFAULTS.delay_listing;
+  if (!Number.isFinite(general.delay_album)) general.delay_album = QOBUZ_GENERAL_DEFAULTS.delay_album;
+  if (!Number.isFinite(general.max_pages_per_label)) general.max_pages_per_label = QOBUZ_GENERAL_DEFAULTS.max_pages_per_label;
+  if (!Number.isFinite(general.retries)) general.retries = QOBUZ_GENERAL_DEFAULTS.retries;
+  if (!Number.isFinite(general.timeout_ms)) general.timeout_ms = QOBUZ_GENERAL_DEFAULTS.timeout_ms;
+
+  await run(db, "BEGIN TRANSACTION");
+  try {
+    await run(
+      db,
+      `INSERT INTO "${QOBUZ_GENERAL_TABLE_NAME}" (
+        id, date_from, date_to, min_minutes, genre_root, delay_listing, delay_album, max_pages_per_label, retries, timeout_ms, updated_at
+      ) VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+      ON CONFLICT(id) DO UPDATE SET
+        date_from = excluded.date_from,
+        date_to = excluded.date_to,
+        min_minutes = excluded.min_minutes,
+        genre_root = excluded.genre_root,
+        delay_listing = excluded.delay_listing,
+        delay_album = excluded.delay_album,
+        max_pages_per_label = excluded.max_pages_per_label,
+        retries = excluded.retries,
+        timeout_ms = excluded.timeout_ms,
+        updated_at = CURRENT_TIMESTAMP`,
+      [
+        general.date_from,
+        general.date_to,
+        general.min_minutes,
+        general.genre_root,
+        general.delay_listing,
+        general.delay_album,
+        general.max_pages_per_label,
+        general.retries,
+        general.timeout_ms
+      ]
+    );
+
+    await run(db, `DELETE FROM "${QOBUZ_LABELS_TABLE_NAME}"`);
+
+    for (let index = 0; index < labelsPayload.length; index += 1) {
+      const label = labelsPayload[index] || {};
+      await run(
+        db,
+        `INSERT INTO "${QOBUZ_LABELS_TABLE_NAME}" (sort_order, name, url, is_active, is_locked)
+         VALUES (?, ?, ?, ?, ?)`,
+        [
+          index,
+          String(label.name || "").trim(),
+          String(label.url || "").trim(),
+          Number(label.is_active) ? 1 : 0,
+          Number(label.is_locked) ? 1 : 0
+        ]
+      );
+    }
+
+    await run(db, "COMMIT");
+  } catch (error) {
+    await run(db, "ROLLBACK");
+    throw error;
+  }
+}
+
 module.exports = {
   ensureSchema,
   fetchAlbums,
@@ -1279,6 +1539,8 @@ module.exports = {
   saveFilterPreset,
   renameFilterPreset,
   deleteFilterPreset,
+  fetchQobuzScrapeSettings,
+  saveQobuzScrapeSettings,
   createDatabaseBackup,
   TABLE_NAME
 };
