@@ -69,6 +69,43 @@ function getFilesPath(appDirectory = getAppDirectory(), ...segments) {
   return path.join(getFilesRoot(appDirectory), ...normalizedSegments);
 }
 
+function parsePlDateSafe(value) {
+  const match = String(value || "").match(/^(\d{2})\.(\d{2})\.(\d{4})$/);
+  if (!match) return null;
+  const day = Number(match[1]);
+  const month = Number(match[2]) - 1;
+  const year = Number(match[3]);
+  const date = new Date(year, month, day);
+  if (
+    date.getFullYear() !== year ||
+    date.getMonth() !== month ||
+    date.getDate() !== day
+  ) {
+    return null;
+  }
+  date.setHours(0, 0, 0, 0);
+  return date;
+}
+
+function formatPlDateSafe(date) {
+  const pad = (value) => String(value).padStart(2, "0");
+  return `${pad(date.getDate())}.${pad(date.getMonth() + 1)}.${date.getFullYear()}`;
+}
+
+function buildAutoDateRange(general = {}) {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const manualFrom = parsePlDateSafe(general.date_from) || new Date(today.getFullYear(), today.getMonth(), today.getDate());
+  const lastDownload = parsePlDateSafe(general.last_download_nr_at);
+  const autoFrom = lastDownload
+    ? new Date(lastDownload.getFullYear(), lastDownload.getMonth(), lastDownload.getDate() + 1)
+    : manualFrom;
+  return {
+    date_from: formatPlDateSafe(autoFrom),
+    date_to: formatPlDateSafe(today)
+  };
+}
+
 async function pathExists(targetPath) {
   try {
     await fs.promises.access(targetPath, fs.constants.F_OK);
@@ -1655,10 +1692,21 @@ function registerHandlers() {
     try {
       await ensureSchema();
       const qobuzSettings = await fetchQobuzScrapeSettings();
+      const nextSettings = {
+        ...qobuzSettings,
+        general: {
+          ...(qobuzSettings?.general || {})
+        }
+      };
+      if (Number(nextSettings.general.new_releases_auto) === 1) {
+        const autoRange = buildAutoDateRange(nextSettings.general);
+        nextSettings.general.date_from = autoRange.date_from;
+        nextSettings.general.date_to = autoRange.date_to;
+      }
       return await runQobuzScraper({
         appRootOverride: payload?.appRootOverride,
         dryRun: payload?.dryRun === true,
-        qobuzSettings,
+        qobuzSettings: nextSettings,
         emitProgress: sendProgress
       });
     } catch (error) {

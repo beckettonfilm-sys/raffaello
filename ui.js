@@ -4650,6 +4650,8 @@ class UiController {
 
     const state = {
       activeTab: "general",
+      labelsPage: 1,
+      labelsPerPage: 8,
       general: { ...(settings?.general || {}) },
       labels: Array.isArray(settings?.labels) ? settings.labels.map((label) => ({ ...label })) : []
     };
@@ -4657,6 +4659,38 @@ class UiController {
     const toDateParts = (text) => {
       const m = String(text || "").match(/^(\d{2})\.(\d{2})\.(\d{4})$/);
       return m ? [m[1], m[2], m[3]] : ["", "", ""];
+    };
+
+    const pad2 = (value) => String(value).padStart(2, "0");
+    const toIsoDate = (text) => {
+      const m = String(text || "").match(/^(\d{2})\.(\d{2})\.(\d{4})$/);
+      if (!m) return null;
+      const date = new Date(Number(m[3]), Number(m[2]) - 1, Number(m[1]));
+      if (Number.isNaN(date.getTime())) return null;
+      return date;
+    };
+    const toPlDate = (date) => `${pad2(date.getDate())}.${pad2(date.getMonth() + 1)}.${date.getFullYear()}`;
+    const computeAutoRange = () => {
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      const manualFrom = toIsoDate(state.general.date_from) || new Date(today.getFullYear(), today.getMonth(), today.getDate());
+      const lastDownload = toIsoDate(state.general.last_download_nr_at);
+      const fromDate = lastDownload
+        ? new Date(lastDownload.getFullYear(), lastDownload.getMonth(), lastDownload.getDate() + 1)
+        : manualFrom;
+      return `${toPlDate(fromDate)} - ${toPlDate(today)}`;
+    };
+    const isNewReleasesAvailable = () => {
+      const now = new Date();
+      const day = now.getDay();
+      if (day >= 1 && day <= 4) return false;
+      if (day === 5 && (now.getHours() === 0 && now.getMinutes() === 0 && now.getSeconds() === 0)) return false;
+      const fridayStart = new Date(now);
+      fridayStart.setHours(0, 0, 1, 0);
+      const daysSinceFriday = (day + 2) % 7;
+      fridayStart.setDate(fridayStart.getDate() - daysSinceFriday);
+      const lastDownload = toIsoDate(state.general.last_download_nr_at);
+      return !(lastDownload && lastDownload >= fridayStart);
     };
 
     document.querySelectorAll(".modal-overlay").forEach((el) => el.remove());
@@ -4715,19 +4749,51 @@ class UiController {
       return button;
     };
 
-    const createHelp = (text) => {
-      const wrap = document.createElement("span");
-      wrap.className = "qobuz-help";
-      wrap.textContent = "i";
-      wrap.dataset.tooltip = text;
-      return wrap;
+    const tabsInfoBtn = document.createElement("span");
+    tabsInfoBtn.className = "qobuz-help qobuz-help--tabs";
+    tabsInfoBtn.textContent = "i";
+    tabs.appendChild(tabsInfoBtn);
+
+    const labelsPagination = document.createElement("div");
+    labelsPagination.className = "qobuz-pagination";
+    const labelsPrevBtn = document.createElement("button");
+    labelsPrevBtn.type = "button";
+    labelsPrevBtn.className = "modal-btn qobuz-pagination__btn";
+    labelsPrevBtn.textContent = "<<";
+    const labelsPageInfo = document.createElement("span");
+    labelsPageInfo.className = "qobuz-pagination__info";
+    const labelsNextBtn = document.createElement("button");
+    labelsNextBtn.type = "button";
+    labelsNextBtn.className = "modal-btn qobuz-pagination__btn";
+    labelsNextBtn.textContent = ">>";
+    labelsPagination.appendChild(labelsPrevBtn);
+    labelsPagination.appendChild(labelsPageInfo);
+    labelsPagination.appendChild(labelsNextBtn);
+
+    const updateTabsHelp = () => {
+      tabsInfoBtn.dataset.tooltip = state.activeTab === "general"
+        ? "GENERAL: zakres dat, parametry scrapera i automatyka NEW RELEASES AUTO."
+        : "LABELS: lista wytwórni dla scrapera. Możesz dodawać, usuwać, aktywować i blokować rekordy.";
+    };
+
+    const updateLabelsPager = () => {
+      const totalPages = Math.max(1, Math.ceil(state.labels.length / state.labelsPerPage));
+      if (state.labelsPage > totalPages) state.labelsPage = totalPages;
+      if (state.labelsPage < 1) state.labelsPage = 1;
+      labelsPageInfo.textContent = `${state.labelsPage} z ${totalPages}`;
+      labelsPrevBtn.disabled = state.activeTab !== "labels" || state.labelsPage <= 1;
+      labelsNextBtn.disabled = state.activeTab !== "labels" || state.labelsPage >= totalPages;
+      labelsPagination.classList.toggle("is-hidden", state.activeTab !== "labels");
     };
 
     const renderGeneral = () => {
       body.innerHTML = "";
       const fields = [
+        ["new_releases", "NEW RELEASES"],
         ["date_from", "DATE FROM"],
         ["date_to", "DATE TO"],
+        ["new_releases_auto", "NEW RELEASES AUTO"],
+        ["auto_range", "AUTO RANGE"],
         ["min_minutes", "MIN MINUTES"],
         ["genre_root", "GENRE ROOT"],
         ["delay_listing", "DELAY LISTING"],
@@ -4737,19 +4803,47 @@ class UiController {
         ["timeout_ms", "TIMEOUT MS"]
       ];
 
+      if (state.general.new_releases_auto !== 0 && state.general.new_releases_auto !== 1) {
+        state.general.new_releases_auto = 1;
+      }
+
       fields.forEach(([key, label]) => {
         const row = document.createElement("div");
         row.className = "modal-form-row";
         const rowLabel = document.createElement("label");
         rowLabel.className = "modal-form-label";
         rowLabel.textContent = label;
-        rowLabel.appendChild(createHelp(helpTexts[key]));
         row.appendChild(rowLabel);
 
         const wrap = document.createElement("div");
         wrap.className = "modal-input-lock";
 
-        if (key === "date_from" || key === "date_to") {
+        if (key === "new_releases") {
+          const status = isNewReleasesAvailable();
+          const input = document.createElement("input");
+          input.type = "text";
+          input.className = "modal-input modal-input--row modal-input--value-narrow qobuz-status-field";
+          input.value = status ? "AVAILABLE" : "NOT AVAILABLE";
+          input.readOnly = true;
+          input.style.background = status ? "#83DD62" : "#DD6362";
+          wrap.appendChild(input);
+        } else if (key === "new_releases_auto") {
+          const toggle = this.createSwitch({ leftLabel: "OFF", rightLabel: "ON", defaultRight: Number(state.general.new_releases_auto) === 1, compact: true });
+          this.updateSwitchLabels(toggle.input, toggle.leftLabel, toggle.rightLabel);
+          toggle.input.addEventListener("change", () => {
+            state.general.new_releases_auto = toggle.input.checked ? 1 : 0;
+            this.updateSwitchLabels(toggle.input, toggle.leftLabel, toggle.rightLabel);
+            renderGeneral();
+          });
+          wrap.appendChild(toggle.wrapper);
+        } else if (key === "auto_range") {
+          const input = document.createElement("input");
+          input.type = "text";
+          input.className = "modal-input modal-input--row qobuz-auto-range";
+          input.value = computeAutoRange();
+          input.readOnly = true;
+          wrap.appendChild(input);
+        } else if (key === "date_from" || key === "date_to") {
           const dateWrap = document.createElement("div");
           dateWrap.className = "modal-input-group";
           const [d, m, y] = toDateParts(state.general[key]);
@@ -4779,11 +4873,12 @@ class UiController {
           state.general[key] = `${inputs[0].value}.${inputs[1].value}.${inputs[2].value}`;
           inputs.forEach((input) => input.addEventListener("input", () => {
             state.general[key] = `${inputs[0].value}.${inputs[1].value}.${inputs[2].value}`;
+            renderGeneral();
           }));
         } else {
           const input = document.createElement("input");
           input.type = "text";
-          input.className = "modal-input modal-input--row modal-input--locked";
+          input.className = "modal-input modal-input--row modal-input--locked modal-input--value-narrow";
           input.value = state.general[key] ?? "";
           input.readOnly = true;
           wrap.appendChild(input);
@@ -4807,16 +4902,21 @@ class UiController {
       addRow.className = "modal-actions";
       const addBtn = document.createElement("button");
       addBtn.type = "button";
-      addBtn.className = "modal-btn";
-      addBtn.textContent = "ADD";
+      addBtn.className = "modal-btn qobuz-add-btn";
+      addBtn.textContent = "+";
       addBtn.addEventListener("click", () => {
-        state.labels.push({ name: "", url: "", is_active: 1, is_locked: 0 });
+        state.labels.unshift({ name: "", url: "", is_active: 1, is_locked: 0 });
+        state.labelsPage = 1;
         renderLabels();
       });
       addRow.appendChild(addBtn);
       body.appendChild(addRow);
 
-      state.labels.forEach((label, index) => {
+      const startIndex = (state.labelsPage - 1) * state.labelsPerPage;
+      const pageLabels = state.labels.slice(startIndex, startIndex + state.labelsPerPage);
+
+      pageLabels.forEach((label, localIndex) => {
+        const index = startIndex + localIndex;
         const row = document.createElement("div");
         row.className = "qobuz-label-row";
         row.classList.toggle("is-disabled", Number(label.is_active) !== 1);
@@ -4872,16 +4972,30 @@ class UiController {
         row.appendChild(removeBtn);
         body.appendChild(row);
       });
+      updateLabelsPager();
     };
 
     const switchTab = (tab) => {
       state.activeTab = tab;
       generalBtn.classList.toggle("active", tab === "general");
       labelsBtn.classList.toggle("active", tab === "labels");
+      updateTabsHelp();
+      updateLabelsPager();
       if (tab === "general") renderGeneral();
       else renderLabels();
     };
 
+    labelsPrevBtn.addEventListener("click", () => {
+      if (state.labelsPage <= 1) return;
+      state.labelsPage -= 1;
+      renderLabels();
+    });
+    labelsNextBtn.addEventListener("click", () => {
+      const totalPages = Math.max(1, Math.ceil(state.labels.length / state.labelsPerPage));
+      if (state.labelsPage >= totalPages) return;
+      state.labelsPage += 1;
+      renderLabels();
+    });
     generalBtn.addEventListener("click", () => switchTab("general"));
     labelsBtn.addEventListener("click", () => switchTab("labels"));
     cancelBtn.addEventListener("click", () => overlay.remove());
@@ -4900,6 +5014,7 @@ class UiController {
 
     card.appendChild(heading);
     card.appendChild(tabs);
+    card.appendChild(labelsPagination);
     card.appendChild(body);
     card.appendChild(actions);
     overlay.appendChild(card);
@@ -7234,7 +7349,9 @@ class UiController {
     }
     if (modalMessage) {
       await this.infoModal({ title: "Import JSON", message: modalMessage });
+      return true;
     }
+    return false;
   }
 
 
@@ -7311,12 +7428,31 @@ class UiController {
       return;
     }
 
-    await this.importFromJson({
+    const importOk = await this.importFromJson({
       directory,
       autoSelectLatestFile: true,
       enableLabelMatch: true,
       skipSelectionDialog: true
     });
+    if (!importOk) return;
+
+    try {
+      const qobuzSettings = await fetchQobuzSettings();
+      const nextSettings = {
+        ...qobuzSettings,
+        general: {
+          ...(qobuzSettings?.general || {}),
+          last_download_nr_at: (() => {
+            const now = new Date();
+            const pad = (value) => String(value).padStart(2, "0");
+            return `${pad(now.getDate())}.${pad(now.getMonth() + 1)}.${now.getFullYear()}`;
+          })()
+        }
+      };
+      await saveQobuzSettings(nextSettings);
+    } catch (error) {
+      console.warn("[Qobuz Settings] Nie udało się zapisać last_download_nr_at:", error);
+    }
   }
 
   getCustomFolderCount() {
