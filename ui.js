@@ -4703,6 +4703,71 @@ class UiController {
       element.addEventListener("mouseleave", hideTooltip);
     };
 
+    const confirmInSettingsModal = ({ title = "Potwierdź", message = "", confirmText = "OK", cancelText = "ANULUJ" } = {}) => {
+      hideTooltip();
+      return new Promise((resolve) => {
+        const confirmOverlay = document.createElement("div");
+        confirmOverlay.className = "modal-overlay";
+
+        const confirmCard = document.createElement("div");
+        confirmCard.className = "modal-card";
+
+        const confirmHeading = document.createElement("h4");
+        confirmHeading.className = "modal-title";
+        confirmHeading.textContent = title;
+
+        const confirmBody = document.createElement("div");
+        confirmBody.className = "modal-body";
+        confirmBody.textContent = message;
+
+        const confirmActions = document.createElement("div");
+        confirmActions.className = "modal-actions";
+
+        const cancelConfirmBtn = document.createElement("button");
+        cancelConfirmBtn.type = "button";
+        cancelConfirmBtn.className = "modal-btn modal-btn--cancel";
+        cancelConfirmBtn.textContent = cancelText;
+
+        const acceptConfirmBtn = document.createElement("button");
+        acceptConfirmBtn.type = "button";
+        acceptConfirmBtn.className = "modal-btn modal-btn--confirm";
+        acceptConfirmBtn.textContent = confirmText;
+
+        confirmActions.appendChild(cancelConfirmBtn);
+        confirmActions.appendChild(acceptConfirmBtn);
+        confirmCard.appendChild(confirmHeading);
+        confirmCard.appendChild(confirmBody);
+        confirmCard.appendChild(confirmActions);
+        confirmOverlay.appendChild(confirmCard);
+        document.body.appendChild(confirmOverlay);
+
+        const cleanup = (value) => {
+          hideTooltip();
+          confirmOverlay.remove();
+          resolve(value);
+        };
+
+        cancelConfirmBtn.addEventListener("click", () => cleanup(false));
+        acceptConfirmBtn.addEventListener("click", () => cleanup(true));
+
+        const onKeyDown = (event) => {
+          event.stopPropagation();
+          if (event.key === "Enter") {
+            event.preventDefault();
+            cleanup(true);
+          }
+        };
+
+        confirmOverlay.addEventListener("keydown", onKeyDown);
+        cancelConfirmBtn.addEventListener("keydown", onKeyDown);
+        acceptConfirmBtn.addEventListener("keydown", onKeyDown);
+
+        setTimeout(() => {
+          acceptConfirmBtn.focus();
+        }, 0);
+      });
+    };
+
     const toDateParts = (text) => {
       const m = String(text || "").match(/^(\d{2})\.(\d{2})\.(\d{4})$/);
       return m ? [m[1], m[2], m[3]] : ["", "", ""];
@@ -4798,6 +4863,7 @@ class UiController {
 
     const labelsPagination = document.createElement("div");
     labelsPagination.className = "qobuz-pagination";
+    labelsPagination.hidden = true;
     const labelsPrevBtn = document.createElement("button");
     labelsPrevBtn.type = "button";
     labelsPrevBtn.className = "menu-chip pagination__btn filter-arrow-btn qobuz-pagination__btn";
@@ -4832,15 +4898,16 @@ class UiController {
       labelsPageInfoText.textContent = `${state.labelsPage} z ${totalPages}`;
       labelsPrevBtn.disabled = state.activeTab !== "labels" || state.labelsPage <= 1;
       labelsNextBtn.disabled = state.activeTab !== "labels" || state.labelsPage >= totalPages;
-      labelsPagination.classList.toggle("is-hidden", state.activeTab !== "labels");
+      labelsPagination.hidden = state.activeTab !== "labels";
     };
 
     const renderGeneral = () => {
+      hideTooltip();
       body.innerHTML = "";
       const fields = [
+        ["new_releases", "NEW RELEASES"],
         ["new_releases_auto", "NEW RELEASES AUTO"],
         ["auto_range", "AUTO RANGE"],
-        ["new_releases", "NEW RELEASES"],
         ["date_from", "DATE FROM"],
         ["date_to", "DATE TO"],
         ["min_minutes", "MIN MINUTES"],
@@ -4851,6 +4918,16 @@ class UiController {
         ["retries", "RETRIES"],
         ["timeout_ms", "TIMEOUT MS"]
       ];
+
+      const dateFromWidthFields = new Set([
+        "min_minutes",
+        "genre_root",
+        "delay_listing",
+        "delay_album",
+        "max_pages_per_label",
+        "retries",
+        "timeout_ms"
+      ]);
 
       if (state.general.new_releases_auto !== 0 && state.general.new_releases_auto !== 1) {
         state.general.new_releases_auto = 1;
@@ -4932,7 +5009,8 @@ class UiController {
         } else {
           const input = document.createElement("input");
           input.type = "text";
-          input.className = "modal-input modal-input--row modal-input--locked modal-input--value-narrow modal-input--centered";
+          input.className = "modal-input modal-input--row modal-input--locked modal-input--centered";
+          input.classList.add(dateFromWidthFields.has(key) ? "modal-input--value-date-full" : "modal-input--value-narrow");
           input.value = state.general[key] ?? "";
           input.readOnly = true;
           const lockBtn = createLockBtn(true, (locked) => {
@@ -4947,9 +5025,7 @@ class UiController {
         }
 
         if (settingsTooltips[key]) {
-          bindTooltip(row, () => settingsTooltips[key]);
           bindTooltip(rowLabel, () => settingsTooltips[key]);
-          bindTooltip(wrap, () => settingsTooltips[key]);
         }
 
         row.appendChild(wrap);
@@ -4958,6 +5034,7 @@ class UiController {
     };
 
     const renderLabels = () => {
+      hideTooltip();
       body.innerHTML = "";
       const addRow = document.createElement("div");
       addRow.className = "modal-actions";
@@ -4981,7 +5058,6 @@ class UiController {
         const row = document.createElement("div");
         row.className = "qobuz-label-row";
         row.classList.toggle("is-disabled", Number(label.is_active) !== 1);
-        bindTooltip(row, () => state.labels[index]?.url || "");
 
         const nameInput = document.createElement("input");
         nameInput.type = "text";
@@ -4996,6 +5072,7 @@ class UiController {
         urlInput.value = label.url || "";
         urlInput.readOnly = Number(label.is_locked) === 1;
         urlInput.classList.toggle("modal-input--locked", urlInput.readOnly);
+        bindTooltip(urlInput, () => state.labels[index]?.url || "");
 
         nameInput.addEventListener("input", () => { state.labels[index].name = nameInput.value; });
         urlInput.addEventListener("input", () => { state.labels[index].url = urlInput.value; });
@@ -5021,8 +5098,10 @@ class UiController {
         removeBtn.className = "modal-btn qobuz-remove-btn";
         removeBtn.textContent = "−";
         removeBtn.addEventListener("click", async () => {
-          const yes = await this.confirmModal({ title: "Usuń label", message: "Czy na pewno usunąć ten rekord?", confirmText: "USUŃ" });
+          hideTooltip();
+          const yes = await confirmInSettingsModal({ title: "Usuń label", message: "Czy na pewno usunąć ten rekord?", confirmText: "USUŃ" });
           if (!yes) return;
+          hideTooltip();
           state.labels.splice(index, 1);
           renderLabels();
         });
