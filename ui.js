@@ -4636,7 +4636,7 @@ class UiController {
       return;
     }
 
-    const helpTexts = {
+    const settingsTooltips = {
       date_from: "Dolna granica daty wydania albumu. Albumy wydane wcześniej niż ta data są pomijane. To podstawowy filtr zawężający scraping do wybranego okresu.",
       date_to: "Górna granica daty wydania albumu. Albumy wydane później niż ta data są pomijane. Razem z date_from tworzy pełny zakres dat.",
       min_minutes: "Minimalna długość albumu w minutach. Krótsze wydania są odrzucane. Przydatne do pomijania singli, bardzo krótkich EP-ek i materiałów, które nie pasują do głównego celu zbierania albumów.",
@@ -4654,6 +4654,53 @@ class UiController {
       labelsPerPage: 8,
       general: { ...(settings?.general || {}) },
       labels: Array.isArray(settings?.labels) ? settings.labels.map((label) => ({ ...label })) : []
+    };
+
+    const tooltip = document.createElement("div");
+    tooltip.className = "settings-tooltip";
+    document.body.appendChild(tooltip);
+    let activeTooltipText = "";
+
+    const hideTooltip = () => {
+      activeTooltipText = "";
+      tooltip.classList.remove("is-visible");
+    };
+
+    const positionTooltip = (x, y) => {
+      const offset = 14;
+      const margin = 8;
+      tooltip.style.left = "0px";
+      tooltip.style.top = "0px";
+      const rect = tooltip.getBoundingClientRect();
+      let left = x + offset;
+      let top = y + offset;
+      if (left + rect.width > window.innerWidth - margin) left = x - rect.width - offset;
+      if (top + rect.height > window.innerHeight - margin) top = y - rect.height - offset;
+      left = Math.max(margin, Math.min(left, window.innerWidth - rect.width - margin));
+      top = Math.max(margin, Math.min(top, window.innerHeight - rect.height - margin));
+      tooltip.style.left = `${left}px`;
+      tooltip.style.top = `${top}px`;
+    };
+
+    const showTooltip = (text, event) => {
+      if (!text) {
+        hideTooltip();
+        return;
+      }
+      if (activeTooltipText !== text) {
+        activeTooltipText = text;
+        tooltip.textContent = text;
+      }
+      tooltip.classList.add("is-visible");
+      positionTooltip(event.clientX, event.clientY);
+    };
+
+    const bindTooltip = (element, textGetter) => {
+      if (!element) return;
+      const handleMove = (event) => showTooltip(textGetter(), event);
+      element.addEventListener("mouseenter", handleMove);
+      element.addEventListener("mousemove", handleMove);
+      element.addEventListener("mouseleave", hideTooltip);
     };
 
     const toDateParts = (text) => {
@@ -4749,38 +4796,40 @@ class UiController {
       return button;
     };
 
-    const tabsInfoBtn = document.createElement("span");
-    tabsInfoBtn.className = "qobuz-help qobuz-help--tabs";
-    tabsInfoBtn.textContent = "i";
-    tabs.appendChild(tabsInfoBtn);
-
     const labelsPagination = document.createElement("div");
     labelsPagination.className = "qobuz-pagination";
     const labelsPrevBtn = document.createElement("button");
     labelsPrevBtn.type = "button";
-    labelsPrevBtn.className = "modal-btn qobuz-pagination__btn";
-    labelsPrevBtn.textContent = "<<";
-    const labelsPageInfo = document.createElement("span");
-    labelsPageInfo.className = "qobuz-pagination__info";
+    labelsPrevBtn.className = "menu-chip pagination__btn filter-arrow-btn qobuz-pagination__btn";
+    const labelsPrevInner = document.createElement("span");
+    labelsPrevInner.className = "menu-chip__inner";
+    labelsPrevInner.textContent = "<<";
+    labelsPrevBtn.appendChild(labelsPrevInner);
+    const labelsPageInfo = document.createElement("div");
+    labelsPageInfo.className = "remix-percent__value qobuz-pagination__info";
+    const labelsPageInfoText = document.createElement("span");
+    labelsPageInfoText.className = "qobuz-pagination__info-text";
+    labelsPageInfo.appendChild(labelsPageInfoText);
     const labelsNextBtn = document.createElement("button");
     labelsNextBtn.type = "button";
-    labelsNextBtn.className = "modal-btn qobuz-pagination__btn";
-    labelsNextBtn.textContent = ">>";
+    labelsNextBtn.className = "menu-chip pagination__btn filter-arrow-btn qobuz-pagination__btn";
+    const labelsNextInner = document.createElement("span");
+    labelsNextInner.className = "menu-chip__inner";
+    labelsNextInner.textContent = ">>";
+    labelsNextBtn.appendChild(labelsNextInner);
     labelsPagination.appendChild(labelsPrevBtn);
     labelsPagination.appendChild(labelsPageInfo);
     labelsPagination.appendChild(labelsNextBtn);
 
-    const updateTabsHelp = () => {
-      tabsInfoBtn.dataset.tooltip = state.activeTab === "general"
-        ? "GENERAL: zakres dat, parametry scrapera i automatyka NEW RELEASES AUTO."
-        : "LABELS: lista wytwórni dla scrapera. Możesz dodawać, usuwać, aktywować i blokować rekordy.";
+    const updateLabelsTabTitle = () => {
+      labelsBtn.textContent = `LABELS (${state.labels.length})`;
     };
 
     const updateLabelsPager = () => {
       const totalPages = Math.max(1, Math.ceil(state.labels.length / state.labelsPerPage));
       if (state.labelsPage > totalPages) state.labelsPage = totalPages;
       if (state.labelsPage < 1) state.labelsPage = 1;
-      labelsPageInfo.textContent = `${state.labelsPage} z ${totalPages}`;
+      labelsPageInfoText.textContent = `${state.labelsPage} z ${totalPages}`;
       labelsPrevBtn.disabled = state.activeTab !== "labels" || state.labelsPage <= 1;
       labelsNextBtn.disabled = state.activeTab !== "labels" || state.labelsPage >= totalPages;
       labelsPagination.classList.toggle("is-hidden", state.activeTab !== "labels");
@@ -4789,11 +4838,11 @@ class UiController {
     const renderGeneral = () => {
       body.innerHTML = "";
       const fields = [
+        ["new_releases_auto", "NEW RELEASES AUTO"],
+        ["auto_range", "AUTO RANGE"],
         ["new_releases", "NEW RELEASES"],
         ["date_from", "DATE FROM"],
         ["date_to", "DATE TO"],
-        ["new_releases_auto", "NEW RELEASES AUTO"],
-        ["auto_range", "AUTO RANGE"],
         ["min_minutes", "MIN MINUTES"],
         ["genre_root", "GENRE ROOT"],
         ["delay_listing", "DELAY LISTING"],
@@ -4810,6 +4859,9 @@ class UiController {
       fields.forEach(([key, label]) => {
         const row = document.createElement("div");
         row.className = "modal-form-row";
+        const isAutoDateLocked = Number(state.general.new_releases_auto) === 1 && (key === "date_from" || key === "date_to");
+        const isAlwaysDimmed = key === "auto_range";
+        row.classList.toggle("is-disabled", isAutoDateLocked || isAlwaysDimmed);
         const rowLabel = document.createElement("label");
         rowLabel.className = "modal-form-label";
         rowLabel.textContent = label;
@@ -4822,7 +4874,7 @@ class UiController {
           const status = isNewReleasesAvailable();
           const input = document.createElement("input");
           input.type = "text";
-          input.className = "modal-input modal-input--row modal-input--value-narrow qobuz-status-field";
+          input.className = "modal-input modal-input--row modal-input--value-double modal-input--centered qobuz-status-field";
           input.value = status ? "AVAILABLE" : "NOT AVAILABLE";
           input.readOnly = true;
           input.style.background = status ? "#83DD62" : "#DD6362";
@@ -4839,7 +4891,7 @@ class UiController {
         } else if (key === "auto_range") {
           const input = document.createElement("input");
           input.type = "text";
-          input.className = "modal-input modal-input--row qobuz-auto-range";
+          input.className = "modal-input modal-input--row modal-input--value-double modal-input--centered qobuz-auto-range modal-input--locked";
           input.value = computeAutoRange();
           input.readOnly = true;
           wrap.appendChild(input);
@@ -4863,13 +4915,15 @@ class UiController {
             }
             return input;
           });
+          const lockBtn = createLockBtn(isAutoDateLocked, () => {});
+          lockBtn.disabled = true;
+          lockBtn.classList.add("modal-lock-btn--readonly");
+          wrap.appendChild(lockBtn);
           wrap.appendChild(dateWrap);
-          wrap.appendChild(createLockBtn(true, (locked) => {
-            inputs.forEach((input) => {
-              input.readOnly = locked;
-              input.classList.toggle("modal-input--locked", locked);
-            });
-          }));
+          inputs.forEach((input) => {
+            input.readOnly = isAutoDateLocked;
+            input.classList.toggle("modal-input--locked", isAutoDateLocked);
+          });
           state.general[key] = `${inputs[0].value}.${inputs[1].value}.${inputs[2].value}`;
           inputs.forEach((input) => input.addEventListener("input", () => {
             state.general[key] = `${inputs[0].value}.${inputs[1].value}.${inputs[2].value}`;
@@ -4878,17 +4932,24 @@ class UiController {
         } else {
           const input = document.createElement("input");
           input.type = "text";
-          input.className = "modal-input modal-input--row modal-input--locked modal-input--value-narrow";
+          input.className = "modal-input modal-input--row modal-input--locked modal-input--value-narrow modal-input--centered";
           input.value = state.general[key] ?? "";
           input.readOnly = true;
-          wrap.appendChild(input);
-          wrap.appendChild(createLockBtn(true, (locked) => {
+          const lockBtn = createLockBtn(true, (locked) => {
             input.readOnly = locked;
             input.classList.toggle("modal-input--locked", locked);
-          }));
+          });
+          wrap.appendChild(lockBtn);
+          wrap.appendChild(input);
           input.addEventListener("input", () => {
             state.general[key] = input.value;
           });
+        }
+
+        if (settingsTooltips[key]) {
+          bindTooltip(row, () => settingsTooltips[key]);
+          bindTooltip(rowLabel, () => settingsTooltips[key]);
+          bindTooltip(wrap, () => settingsTooltips[key]);
         }
 
         row.appendChild(wrap);
@@ -4920,6 +4981,7 @@ class UiController {
         const row = document.createElement("div");
         row.className = "qobuz-label-row";
         row.classList.toggle("is-disabled", Number(label.is_active) !== 1);
+        bindTooltip(row, () => state.labels[index]?.url || "");
 
         const nameInput = document.createElement("input");
         nameInput.type = "text";
@@ -4965,13 +5027,14 @@ class UiController {
           renderLabels();
         });
 
+        row.appendChild(lockBtn);
         row.appendChild(nameInput);
         row.appendChild(urlInput);
-        row.appendChild(lockBtn);
         row.appendChild(toggle.wrapper);
         row.appendChild(removeBtn);
         body.appendChild(row);
       });
+      updateLabelsTabTitle();
       updateLabelsPager();
     };
 
@@ -4979,8 +5042,9 @@ class UiController {
       state.activeTab = tab;
       generalBtn.classList.toggle("active", tab === "general");
       labelsBtn.classList.toggle("active", tab === "labels");
-      updateTabsHelp();
+      hideTooltip();
       updateLabelsPager();
+      updateLabelsTabTitle();
       if (tab === "general") renderGeneral();
       else renderLabels();
     };
@@ -4998,13 +5062,19 @@ class UiController {
     });
     generalBtn.addEventListener("click", () => switchTab("general"));
     labelsBtn.addEventListener("click", () => switchTab("labels"));
-    cancelBtn.addEventListener("click", () => overlay.remove());
+    cancelBtn.addEventListener("click", () => {
+      hideTooltip();
+      tooltip.remove();
+      overlay.remove();
+    });
     saveBtn.addEventListener("click", async () => {
       try {
         await saveQobuzSettings({
           general: state.general,
           labels: state.labels.map((label, sortOrder) => ({ ...label, sort_order: sortOrder }))
         });
+        hideTooltip();
+        tooltip.remove();
         overlay.remove();
         this.showStatusMessage("✅ Zapisano SETTINGS QOBUZ SCRAPE");
       } catch (error) {
@@ -5019,6 +5089,7 @@ class UiController {
     card.appendChild(actions);
     overlay.appendChild(card);
     document.body.appendChild(overlay);
+    updateLabelsTabTitle();
     switchTab("general");
   }
 
