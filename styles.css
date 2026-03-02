@@ -2506,6 +2506,62 @@ main::-webkit-scrollbar {
   overflow: auto;
 }
 
+
+.qobuz-pagination {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.qobuz-pagination.is-hidden {
+  visibility: hidden;
+}
+
+.qobuz-pagination__btn {
+  min-width: 40px;
+}
+
+.qobuz-pagination__info {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 34px;
+  padding: 0 14px;
+  border: 1px solid rgba(255, 255, 255, 0.45);
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.2);
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.qobuz-help--tabs {
+  margin-left: 10px;
+}
+
+.modal-input--value-narrow {
+  width: 72px;
+}
+
+.qobuz-auto-range {
+  min-width: 190px;
+}
+
+.qobuz-status-field {
+  color: #111;
+  font-weight: 700;
+}
+
+.qobuz-add-btn {
+  background: #83DD62;
+  color: #111;
+}
+
+.qobuz-remove-btn {
+  background: #DD6362;
+}
+
 .qobuz-help {
   display: inline-flex;
   align-items: center;
