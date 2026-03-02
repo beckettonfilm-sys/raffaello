@@ -4863,7 +4863,6 @@ class UiController {
 
     const labelsPagination = document.createElement("div");
     labelsPagination.className = "qobuz-pagination";
-    labelsPagination.hidden = true;
     const labelsPrevBtn = document.createElement("button");
     labelsPrevBtn.type = "button";
     labelsPrevBtn.className = "menu-chip pagination__btn filter-arrow-btn qobuz-pagination__btn";
@@ -4898,12 +4897,12 @@ class UiController {
       labelsPageInfoText.textContent = `${state.labelsPage} z ${totalPages}`;
       labelsPrevBtn.disabled = state.activeTab !== "labels" || state.labelsPage <= 1;
       labelsNextBtn.disabled = state.activeTab !== "labels" || state.labelsPage >= totalPages;
-      labelsPagination.hidden = state.activeTab !== "labels";
     };
 
     const renderGeneral = () => {
       hideTooltip();
       body.innerHTML = "";
+      labelsPagination.remove();
       const fields = [
         ["new_releases", "NEW RELEASES"],
         ["new_releases_auto", "NEW RELEASES AUTO"],
@@ -5115,6 +5114,7 @@ class UiController {
       });
       updateLabelsTabTitle();
       updateLabelsPager();
+      body.appendChild(labelsPagination);
     };
 
     const switchTab = (tab) => {
@@ -5163,7 +5163,6 @@ class UiController {
 
     card.appendChild(heading);
     card.appendChild(tabs);
-    card.appendChild(labelsPagination);
     card.appendChild(body);
     card.appendChild(actions);
     overlay.appendChild(card);

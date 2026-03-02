@@ -2558,6 +2558,8 @@ main::-webkit-scrollbar {
 
 .modal-input--value-date-full {
   width: 228px;
+  flex: 0 0 228px;
+  max-width: 228px;
 }
 
 .qobuz-status-field {
