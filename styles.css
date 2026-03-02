@@ -2529,7 +2529,7 @@ main::-webkit-scrollbar {
 }
 
 .qobuz-pagination.is-hidden {
-  visibility: hidden;
+  display: none;
 }
 
 .qobuz-pagination__btn {
@@ -2554,6 +2554,10 @@ main::-webkit-scrollbar {
 
 .modal-input--value-double {
   width: 142px;
+}
+
+.modal-input--value-date-full {
+  width: 228px;
 }
 
 .qobuz-status-field {
@@ -2599,8 +2603,8 @@ main::-webkit-scrollbar {
   color: #fff;
   border: 1px solid rgba(255, 255, 255, 0.2);
   border-radius: 8px;
-  font-size: 11px;
-  line-height: 1.35;
+  font-size: 14px;
+  line-height: 1.45;
   text-transform: none;
   pointer-events: none;
   z-index: 2500;
