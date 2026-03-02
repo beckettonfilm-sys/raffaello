@@ -479,6 +479,10 @@ body::-webkit-scrollbar {
   min-width: 0;
 }
 
+.modal-input--centered {
+  text-align: center;
+}
+
 .modal-input-lock {
   display: flex;
   align-items: center;
@@ -500,6 +504,11 @@ body::-webkit-scrollbar {
   display: flex;
   align-items: center;
   justify-content: center;
+}
+
+.modal-lock-btn--readonly {
+  cursor: default;
+  opacity: 1;
 }
 
 .modal-lock-btn img {
@@ -544,6 +553,10 @@ body::-webkit-scrollbar {
   display: flex;
   align-items: center;
   gap: 12px;
+}
+
+.modal-form-row.is-disabled {
+  opacity: 0.45;
 }
 
 .modal-form-label {
@@ -2520,32 +2533,27 @@ main::-webkit-scrollbar {
 }
 
 .qobuz-pagination__btn {
-  min-width: 40px;
+  min-width: 56px;
+  padding: 0 16px;
 }
 
 .qobuz-pagination__info {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-height: 34px;
+  min-width: 88px;
+  width: auto;
   padding: 0 14px;
-  border: 1px solid rgba(255, 255, 255, 0.45);
-  border-radius: 8px;
-  background: rgba(0, 0, 0, 0.2);
-  font-weight: 700;
-  white-space: nowrap;
 }
 
-.qobuz-help--tabs {
-  margin-left: 10px;
+.qobuz-pagination__info-text {
+  display: inline-block;
+  transform: skew(21deg);
 }
 
 .modal-input--value-narrow {
-  width: 72px;
+  width: 68px;
 }
 
-.qobuz-auto-range {
-  min-width: 190px;
+.modal-input--value-double {
+  width: 142px;
 }
 
 .qobuz-status-field {
@@ -2562,41 +2570,9 @@ main::-webkit-scrollbar {
   background: #DD6362;
 }
 
-.qobuz-help {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 16px;
-  height: 16px;
-  margin-left: 8px;
-  border-radius: 50%;
-  border: 1px solid rgba(255, 255, 255, 0.45);
-  font-size: 11px;
-  cursor: help;
-  position: relative;
-}
-
-.qobuz-help:hover::after {
-  content: attr(data-tooltip);
-  position: absolute;
-  top: 20px;
-  left: 0;
-  min-width: 260px;
-  max-width: 380px;
-  background: rgba(8, 8, 8, 0.95);
-  color: #fff;
-  border: 1px solid rgba(255, 255, 255, 0.2);
-  border-radius: 8px;
-  padding: 8px 10px;
-  z-index: 50;
-  font-size: 11px;
-  line-height: 1.35;
-  text-transform: none;
-}
-
 .qobuz-label-row {
   display: grid;
-  grid-template-columns: 1fr 1.7fr auto auto auto;
+  grid-template-columns: auto 1fr 1.7fr auto auto;
   gap: 8px;
   align-items: center;
   margin-bottom: 8px;
@@ -2611,4 +2587,27 @@ main::-webkit-scrollbar {
   padding: 6px;
   font-size: 18px;
   line-height: 1;
+}
+
+.settings-tooltip {
+  position: fixed;
+  top: 0;
+  left: 0;
+  max-width: min(420px, calc(100vw - 16px));
+  padding: 8px 10px;
+  background: rgba(8, 8, 8, 0.95);
+  color: #fff;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 8px;
+  font-size: 11px;
+  line-height: 1.35;
+  text-transform: none;
+  pointer-events: none;
+  z-index: 2500;
+  white-space: normal;
+  display: none;
+}
+
+.settings-tooltip.is-visible {
+  display: block;
 }
