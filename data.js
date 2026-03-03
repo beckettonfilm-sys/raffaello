@@ -255,6 +255,14 @@ function truncateName(name, n) {
   return `${name.slice(0, n)}…`;
 }
 
+function isAlbumComingSoon(albumLike) {
+  const album = getAlbumData(albumLike);
+  if (!album) return false;
+  const releaseDate = Number(album.release_date) || 0;
+  const todayStart = new Date(new Date().toDateString()).getTime() / 1000;
+  return releaseDate > todayStart;
+}
+
 class DataStore {
   constructor() {
     this.records = [];
@@ -302,7 +310,8 @@ class DataStore {
       heardMax: null,
       durationMin: null,
       durationMax: null,
-      showFavorites: true
+      showFavorites: true,
+      showComingSoon: false
     };
   }
 
@@ -564,7 +573,8 @@ class DataStore {
     heardMax = null,
     durationMin = null,
     durationMax = null,
-    showFavorites = true
+    showFavorites = true,
+    showComingSoon = false
   } = {}) {
     const normalizedStart = Number.isFinite(releaseStartTs) ? releaseStartTs : null;
     const normalizedEnd = Number.isFinite(releaseEndTs) ? releaseEndTs : null;
@@ -598,6 +608,7 @@ class DataStore {
         ? normalizedDurationMin
         : normalizedDurationMax;
     const normalizedShowFavorites = showFavorites !== false;
+    const normalizedShowComingSoon = showComingSoon === true;
     const changed =
       this.activeFilters.releaseStartTs !== rangeStart ||
       this.activeFilters.releaseEndTs !== rangeEnd ||
@@ -608,7 +619,8 @@ class DataStore {
       this.activeFilters.heardMax !== finalHeardMax ||
       this.activeFilters.durationMin !== finalDurationMin ||
       this.activeFilters.durationMax !== finalDurationMax ||
-      this.activeFilters.showFavorites !== normalizedShowFavorites;
+      this.activeFilters.showFavorites !== normalizedShowFavorites ||
+      this.activeFilters.showComingSoon !== normalizedShowComingSoon;
 
     if (changed) {
       this.activeFilters = {
@@ -623,7 +635,8 @@ class DataStore {
         heardMax: finalHeardMax,
         durationMin: finalDurationMin,
         durationMax: finalDurationMax,
-        showFavorites: normalizedShowFavorites
+        showFavorites: normalizedShowFavorites,
+        showComingSoon: normalizedShowComingSoon
       };
       this.sortedCategoryCache.clear();
     }
@@ -653,7 +666,8 @@ class DataStore {
       heardMax,
       durationMin,
       durationMax,
-      showFavorites
+      showFavorites,
+      showComingSoon
     } = this.activeFilters;
     const allowedLabels = labelsSet || this.selectedLabels;
     const allowedSelectors = selectorsSet || this.selectedSelectors;
@@ -671,6 +685,7 @@ class DataStore {
       if (!allowedLabels.has(album.label)) return false;
       if (!showFavorites && album.favorite) return false;
       if (!allowedSelectors.has(album.selector) && !(showFavorites && album.favorite)) return false;
+      if (!showComingSoon && isAlbumComingSoon(album)) return false;
       if (releaseStartTs && album.release_date && album.release_date < releaseStartTs) return false;
       if (releaseEndTs && album.release_date && album.release_date > releaseEndTs) return false;
       if (heardMin !== null || heardMax !== null) {
@@ -731,7 +746,8 @@ class DataStore {
       heardMax,
       durationMin,
       durationMax,
-      showFavorites
+      showFavorites,
+      showComingSoon
     } = this.activeFilters;
     const allowedLabels = labelsSet || this.selectedLabels;
     const allowedSelectors = selectorsSet || this.selectedSelectors;
@@ -748,6 +764,7 @@ class DataStore {
       if (!allowedLabels.has(album.label)) return false;
       if (!showFavorites && album.favorite) return false;
       if (!allowedSelectors.has(album.selector) && !(showFavorites && album.favorite)) return false;
+      if (!showComingSoon && isAlbumComingSoon(album)) return false;
       if (releaseStartTs && album.release_date && album.release_date < releaseStartTs) return false;
       if (releaseEndTs && album.release_date && album.release_date > releaseEndTs) return false;
       if (heardMin !== null || heardMax !== null) {
@@ -799,13 +816,15 @@ class DataStore {
       searchKey,
       durationMin,
       durationMax,
-      showFavorites
+      showFavorites,
+      showComingSoon
     } = this.activeFilters;
     const allowedLabels = labelsSet || this.selectedLabels;
     const allowedSelectors = selectorsSet || this.selectedSelectors;
     if (!allowedLabels.has(album.label)) return false;
     if (!showFavorites && album.favorite) return false;
     if (!allowedSelectors.has(album.selector) && !(showFavorites && album.favorite)) return false;
+    if (!showComingSoon && isAlbumComingSoon(album)) return false;
     if (releaseStartTs && album.release_date && album.release_date < releaseStartTs) return false;
     if (releaseEndTs && album.release_date && album.release_date > releaseEndTs) return false;
     if (durationMin !== null && (Number(album.duration) || 0) < durationMin) return false;
@@ -821,6 +840,10 @@ class DataStore {
   isNewRelease(entry) {
     const album = getAlbumData(entry);
     return this.newReleaseSet.has(album);
+  }
+
+  isComingSoon(entry) {
+    return isAlbumComingSoon(entry);
   }
 
   getAssignmentCounts() {
@@ -884,7 +907,8 @@ class DataStore {
       heardMax,
       durationMin,
       durationMax,
-      showFavorites
+      showFavorites,
+      showComingSoon
     } = this.activeFilters;
     return [
       releaseStartTs ?? "",
@@ -896,7 +920,8 @@ class DataStore {
       heardMax ?? "",
       durationMin ?? "",
       durationMax ?? "",
-      showFavorites ? "1" : "0"
+      showFavorites ? "1" : "0",
+      showComingSoon ? "1" : "0"
     ].join("|");
   }
 
