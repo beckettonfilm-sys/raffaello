@@ -123,7 +123,7 @@ const INFO_SHORTCUTS = [
       { title: "F + LPM / F + PPM", text: "dodaje lub usuwa album z ulubionych — działa na karcie albumu." },
       { title: "C + LPM / C + PPM", text: "kopiuje dane albumu lub sam tytuł do schowka — działa na karcie albumu." },
       { title: "D + LPM", text: "usuwa album (z potwierdzeniem) — działa na karcie albumu." },
-      { title: "CTRL + LPM / CTRL + PPM", text: "zwiększa lub zmniejsza licznik HEARD — działa na karcie albumu." },
+      { title: "H + LPM / H + PPM", text: "zwiększa lub zmniejsza licznik HEARD — działa na karcie albumu." },
       { title: "1-5 + LPM", text: "ustawia ocenę gwiazdkową albumu — działa na karcie albumu po przytrzymaniu klawisza 1–5." },
       { title: "1-5 + PPM", text: "czyści ocenę (ustawia 0) — działa na karcie albumu po przytrzymaniu klawisza 1–5." },
       { title: "SHIFT + LPM / SHIFT + PPM", text: "SHIFT + klik przypisuje album do wybranego folderu, SHIFT + PPM usuwa przypisanie — działa na karcie albumu; w REMIX usuwa z aktualnego folderu remix." }
@@ -6540,25 +6540,31 @@ class UiController {
 
     this.applySelectorColorToCard(card, album.selector);
 
-    let ctrlLeftHandled = false;
+    let heardLeftHandled = false;
+    const isHeardShortcut = (event) =>
+      event.getModifierState?.("KeyH") &&
+      !event.ctrlKey &&
+      !event.shiftKey &&
+      !event.metaKey &&
+      !event.altKey;
 
     card.addEventListener("mousedown", (event) => {
       if (event.button !== 0) return;
-      if (!event.ctrlKey || event.shiftKey || event.metaKey) return;
+      if (!isHeardShortcut(event)) return;
       event.preventDefault();
       event.stopPropagation();
       const { changed } = this.store.adjustHeard(album, 1);
       if (changed) {
         this.processAndRender();
       }
-      ctrlLeftHandled = true;
+      heardLeftHandled = true;
     });
 
     card.addEventListener("click", async (event) => {
-      if (ctrlLeftHandled) {
+      if (heardLeftHandled) {
         event.preventDefault();
         event.stopPropagation();
-        ctrlLeftHandled = false;
+        heardLeftHandled = false;
         return;
       }
       if (
@@ -6765,8 +6771,9 @@ class UiController {
         this.processAndRender();
         return;
       }
-      if (event.ctrlKey && !event.shiftKey && !event.metaKey) {
+      if (isHeardShortcut(event)) {
         event.preventDefault();
+        event.stopPropagation();
         const { changed } = this.store.adjustHeard(album, -1);
         if (changed) {
           this.processAndRender();

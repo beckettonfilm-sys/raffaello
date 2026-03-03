@@ -682,10 +682,17 @@ class DataStore {
 
     const passesFilters = (entry) => {
       const album = getAlbumData(entry);
+      const albumComingSoon = isAlbumComingSoon(album);
       if (!allowedLabels.has(album.label)) return false;
       if (!showFavorites && album.favorite) return false;
-      if (!allowedSelectors.has(album.selector) && !(showFavorites && album.favorite)) return false;
-      if (!showComingSoon && isAlbumComingSoon(album)) return false;
+      if (
+        !allowedSelectors.has(album.selector) &&
+        !(showFavorites && album.favorite) &&
+        !(showComingSoon && albumComingSoon)
+      ) {
+        return false;
+      }
+      if (!showComingSoon && albumComingSoon) return false;
       if (releaseStartTs && album.release_date && album.release_date < releaseStartTs) return false;
       if (releaseEndTs && album.release_date && album.release_date > releaseEndTs) return false;
       if (heardMin !== null || heardMax !== null) {
@@ -761,10 +768,17 @@ class DataStore {
 
     const passesFilters = (entry) => {
       const album = getAlbumData(entry);
+      const albumComingSoon = isAlbumComingSoon(album);
       if (!allowedLabels.has(album.label)) return false;
       if (!showFavorites && album.favorite) return false;
-      if (!allowedSelectors.has(album.selector) && !(showFavorites && album.favorite)) return false;
-      if (!showComingSoon && isAlbumComingSoon(album)) return false;
+      if (
+        !allowedSelectors.has(album.selector) &&
+        !(showFavorites && album.favorite) &&
+        !(showComingSoon && albumComingSoon)
+      ) {
+        return false;
+      }
+      if (!showComingSoon && albumComingSoon) return false;
       if (releaseStartTs && album.release_date && album.release_date < releaseStartTs) return false;
       if (releaseEndTs && album.release_date && album.release_date > releaseEndTs) return false;
       if (heardMin !== null || heardMax !== null) {
@@ -821,10 +835,17 @@ class DataStore {
     } = this.activeFilters;
     const allowedLabels = labelsSet || this.selectedLabels;
     const allowedSelectors = selectorsSet || this.selectedSelectors;
+    const albumComingSoon = isAlbumComingSoon(album);
     if (!allowedLabels.has(album.label)) return false;
     if (!showFavorites && album.favorite) return false;
-    if (!allowedSelectors.has(album.selector) && !(showFavorites && album.favorite)) return false;
-    if (!showComingSoon && isAlbumComingSoon(album)) return false;
+    if (
+      !allowedSelectors.has(album.selector) &&
+      !(showFavorites && album.favorite) &&
+      !(showComingSoon && albumComingSoon)
+    ) {
+      return false;
+    }
+    if (!showComingSoon && albumComingSoon) return false;
     if (releaseStartTs && album.release_date && album.release_date < releaseStartTs) return false;
     if (releaseEndTs && album.release_date && album.release_date > releaseEndTs) return false;
     if (durationMin !== null && (Number(album.duration) || 0) < durationMin) return false;
