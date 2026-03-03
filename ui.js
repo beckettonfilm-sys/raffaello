@@ -4904,8 +4904,8 @@ class UiController {
       body.innerHTML = "";
       labelsPagination.remove();
       const fields = [
-        ["new_releases", "NEW RELEASES"],
         ["new_releases_auto", "NEW RELEASES AUTO"],
+        ["new_releases", "NEW RELEASES"],
         ["auto_range", "AUTO RANGE"],
         ["date_from", "DATE FROM"],
         ["date_to", "DATE TO"],
@@ -4917,16 +4917,6 @@ class UiController {
         ["retries", "RETRIES"],
         ["timeout_ms", "TIMEOUT MS"]
       ];
-
-      const dateFromWidthFields = new Set([
-        "min_minutes",
-        "genre_root",
-        "delay_listing",
-        "delay_album",
-        "max_pages_per_label",
-        "retries",
-        "timeout_ms"
-      ]);
 
       if (state.general.new_releases_auto !== 0 && state.general.new_releases_auto !== 1) {
         state.general.new_releases_auto = 1;
@@ -5008,8 +4998,7 @@ class UiController {
         } else {
           const input = document.createElement("input");
           input.type = "text";
-          input.className = "modal-input modal-input--row modal-input--locked modal-input--centered";
-          input.classList.add(dateFromWidthFields.has(key) ? "modal-input--value-date-full" : "modal-input--value-narrow");
+          input.className = "modal-input modal-input--row modal-input--locked modal-input--centered modal-input--value-double";
           input.value = state.general[key] ?? "";
           input.readOnly = true;
           const lockBtn = createLockBtn(true, (locked) => {
@@ -5036,7 +5025,7 @@ class UiController {
       hideTooltip();
       body.innerHTML = "";
       const addRow = document.createElement("div");
-      addRow.className = "modal-actions";
+      addRow.className = "modal-actions qobuz-label-actions";
       const addBtn = document.createElement("button");
       addBtn.type = "button";
       addBtn.className = "modal-btn qobuz-add-btn";
@@ -5046,7 +5035,20 @@ class UiController {
         state.labelsPage = 1;
         renderLabels();
       });
+      const resetBtn = document.createElement("button");
+      resetBtn.type = "button";
+      resetBtn.className = "modal-btn qobuz-reset-btn";
+      resetBtn.textContent = "RESET";
+      resetBtn.addEventListener("click", () => {
+        const areAllActive = state.labels.length > 0 && state.labels.every((label) => Number(label.is_active) === 1);
+        const nextValue = areAllActive ? 0 : 1;
+        state.labels.forEach((label) => {
+          label.is_active = nextValue;
+        });
+        renderLabels();
+      });
       addRow.appendChild(addBtn);
+      addRow.appendChild(resetBtn);
       body.appendChild(addRow);
 
       const startIndex = (state.labelsPage - 1) * state.labelsPerPage;
