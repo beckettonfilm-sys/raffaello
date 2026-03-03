@@ -264,7 +264,8 @@ class UiController {
         delete: false,
         lock: false,
         picture: false,
-        edit: false
+        edit: false,
+        heard: false
       },
       ratingKey: null,
       formatOptions: [],
@@ -675,6 +676,8 @@ class UiController {
         this.uiState.keyModifiers.lock = true;
       } else if (key === "o") {
         this.uiState.keyModifiers.picture = true;
+      } else if (key === "h") {
+        this.uiState.keyModifiers.heard = true;
       }
     });
 
@@ -698,6 +701,8 @@ class UiController {
         this.uiState.keyModifiers.lock = false;
       } else if (key === "o") {
         this.uiState.keyModifiers.picture = false;
+      } else if (key === "h") {
+        this.uiState.keyModifiers.heard = false;
       }
     });
 
@@ -6540,31 +6545,21 @@ class UiController {
 
     this.applySelectorColorToCard(card, album.selector);
 
-    let heardLeftHandled = false;
     const isHeardShortcut = (event) =>
-      event.getModifierState?.("KeyH") &&
+      this.uiState.keyModifiers.heard &&
       !event.ctrlKey &&
       !event.shiftKey &&
       !event.metaKey &&
       !event.altKey;
 
-    card.addEventListener("mousedown", (event) => {
-      if (event.button !== 0) return;
-      if (!isHeardShortcut(event)) return;
-      event.preventDefault();
-      event.stopPropagation();
-      const { changed } = this.store.adjustHeard(album, 1);
-      if (changed) {
-        this.processAndRender();
-      }
-      heardLeftHandled = true;
-    });
-
     card.addEventListener("click", async (event) => {
-      if (heardLeftHandled) {
+      if (isHeardShortcut(event) && event.button === 0) {
         event.preventDefault();
         event.stopPropagation();
-        heardLeftHandled = false;
+        const { changed } = this.store.adjustHeard(album, 1);
+        if (changed) {
+          this.processAndRender();
+        }
         return;
       }
       if (
