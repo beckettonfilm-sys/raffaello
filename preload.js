@@ -33,5 +33,6 @@ contextBridge.exposeInMainWorld("electronAPI", {
   openExternal: (url) => ipcRenderer.invoke("open-external", url),
   maximizeTidalWindow: () => ipcRenderer.invoke("maximize-tidal-window"),
   onAppCloseRequest: (handler) => ipcRenderer.on("app-close-request", handler),
-  confirmAppClose: () => ipcRenderer.send("app-close-confirmed")
+  confirmAppClose: () => ipcRenderer.send("app-close-confirmed"),
+  cancelAppClose: () => ipcRenderer.send("app-close-cancelled")
 });
