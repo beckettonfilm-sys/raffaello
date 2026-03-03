@@ -2554,6 +2554,8 @@ main::-webkit-scrollbar {
 
 .modal-input--value-double {
   width: 142px;
+  flex: 0 0 142px;
+  max-width: 142px;
 }
 
 .modal-input--value-date-full {
@@ -2570,6 +2572,15 @@ main::-webkit-scrollbar {
 .qobuz-add-btn {
   background: #83DD62;
   color: #111;
+}
+
+.qobuz-label-actions {
+  overflow: visible;
+  padding-top: 2px;
+}
+
+.qobuz-reset-btn {
+  min-width: 72px;
 }
 
 .qobuz-remove-btn {
