@@ -144,7 +144,6 @@ const INFO_SHORTCUTS = [
   {
     section: "Widok i metadane",
     items: [
-      { title: "Q", text: "włącza/wyłącza widoczność ocen RATING — działa globalnie (poza inputami i modalami)." },
       { title: "Przytrzymanie I", text: "tymczasowo pokazuje identyfikatory albumów (ID) — działa globalnie." },
       { title: "Klik ikony labela", text: "przełącza selector albumu (N/X/F/K/O) — działa na karcie albumu." },
       { title: "Klik ikony formatu", text: "kopiuje Roon ID do schowka — działa na karcie albumu." },
@@ -244,7 +243,9 @@ class UiController {
       activeOptionsTab: "operations",
       operationsScope: "folders",
       showFavorites: true,
+      showComingSoon: false,
       showFavoriteCorners: true,
+      autoSaveOnClose: this.readStoredAutoSaveOnCloseState(),
       cdBackGlobalEnabled: true,
       showRatings: this.readStoredRatingState(),
       autoFilterFolder: false,
@@ -441,10 +442,13 @@ class UiController {
       skipFolderFilteringInput: null,
       skipFolderFilteringLabels: null,
       showFavoritesInput: null,
+      showComingSoonInput: null,
       showFavoriteCornersInput: null,
       showFavoriteCornersLabels: null,
       autoFilterFolderInput: null,
       autoFilterFolderLabels: null,
+      autoSaveOnCloseInput: null,
+      autoSaveOnCloseLabels: null,
       ratingToggleInput: null,
       ratingToggleLabels: null,
       remixToggleInput: null,
@@ -648,12 +652,6 @@ class UiController {
       this.resetCurrentPage();
       this.renderAlbumsPage();
       this.showRemixStatus("Przeładowano losowe ułożenie albumów.", "on");
-    });
-
-    document.addEventListener("keydown", (event) => {
-      if (shouldIgnoreKeyEvent(event)) return;
-      if (event.key.toLowerCase() !== "q") return;
-      this.setRatingVisibility(!this.uiState.showRatings);
     });
 
     document.addEventListener("keydown", (event) => {
@@ -1565,6 +1563,41 @@ class UiController {
     cdBackGlobalRow.appendChild(cdBackGlobalSwitch.wrapper);
     searchSection.appendChild(cdBackGlobalRow);
 
+    const autoSaveOnCloseRow = document.createElement("div");
+    autoSaveOnCloseRow.className = "filter-toggle-row";
+    const autoSaveOnCloseLabel = document.createElement("div");
+    autoSaveOnCloseLabel.className = "filter-toggle-title";
+    autoSaveOnCloseLabel.textContent = "AUTO-ZAPIS";
+    const autoSaveOnCloseSwitch = this.createSwitch({
+      id: "autoSaveOnCloseToggle",
+      leftLabel: "OFF",
+      rightLabel: "ON",
+      defaultRight: this.uiState.autoSaveOnClose,
+      compact: true
+    });
+    this.dom.autoSaveOnCloseInput = autoSaveOnCloseSwitch.input;
+    this.dom.autoSaveOnCloseLabels = {
+      left: autoSaveOnCloseSwitch.leftLabel,
+      right: autoSaveOnCloseSwitch.rightLabel
+    };
+    this.updateSwitchLabels(
+      autoSaveOnCloseSwitch.input,
+      autoSaveOnCloseSwitch.leftLabel,
+      autoSaveOnCloseSwitch.rightLabel
+    );
+    autoSaveOnCloseSwitch.input.addEventListener("change", () => {
+      this.uiState.autoSaveOnClose = autoSaveOnCloseSwitch.input.checked;
+      this.updateSwitchLabels(
+        autoSaveOnCloseSwitch.input,
+        autoSaveOnCloseSwitch.leftLabel,
+        autoSaveOnCloseSwitch.rightLabel
+      );
+      this.persistAutoSaveOnCloseState();
+    });
+    autoSaveOnCloseRow.appendChild(autoSaveOnCloseLabel);
+    autoSaveOnCloseRow.appendChild(autoSaveOnCloseSwitch.wrapper);
+    searchSection.appendChild(autoSaveOnCloseRow);
+
     const dateRange = document.createElement("div");
     dateRange.className = "filter-date-range";
     const months = [
@@ -1803,7 +1836,7 @@ class UiController {
     const favoritesChip = document.createElement("label");
     favoritesChip.className = "filter-chip filter-chip--selection";
     const favoritesText = document.createElement("span");
-    favoritesText.textContent = "POKAŻ ULUBIONE ALBUMY";
+    favoritesText.textContent = "ULUBIONE ALBUMY";
     const favoritesInput = document.createElement("input");
     favoritesInput.type = "checkbox";
     favoritesInput.value = "";
@@ -1817,6 +1850,24 @@ class UiController {
     favoritesChip.appendChild(favoritesInput);
     selectorGrid.appendChild(favoritesChip);
     this.dom.showFavoritesInput = favoritesInput;
+
+    const comingSoonChip = document.createElement("label");
+    comingSoonChip.className = "filter-chip filter-chip--selection";
+    const comingSoonText = document.createElement("span");
+    comingSoonText.textContent = "COMING SOON";
+    const comingSoonInput = document.createElement("input");
+    comingSoonInput.type = "checkbox";
+    comingSoonInput.value = "";
+    comingSoonInput.checked = this.uiState.showComingSoon;
+    comingSoonInput.addEventListener("change", () => {
+      this.uiState.showComingSoon = comingSoonInput.checked;
+      this.resetCurrentPage();
+      this.processAndRender();
+    });
+    comingSoonChip.appendChild(comingSoonText);
+    comingSoonChip.appendChild(comingSoonInput);
+    selectorGrid.appendChild(comingSoonChip);
+    this.dom.showComingSoonInput = comingSoonInput;
 
     const selectorActions = this.createActionsRow([
       {
@@ -3138,6 +3189,9 @@ class UiController {
     if (this.dom.showFavoritesInput && container.contains(this.dom.showFavoritesInput)) {
       this.uiState.showFavorites = this.dom.showFavoritesInput.checked;
     }
+    if (this.dom.showComingSoonInput && container.contains(this.dom.showComingSoonInput)) {
+      this.uiState.showComingSoon = this.dom.showComingSoonInput.checked;
+    }
     this.processAndRender();
   }
 
@@ -3327,6 +3381,7 @@ class UiController {
 
   isSelectorDefault() {
     if (!this.uiState.showFavorites) return false;
+    if (this.uiState.showComingSoon) return false;
     if (this.uiState.selectedSelectors.size !== SELECTOR_VALUES.length) return false;
     return SELECTOR_VALUES.every((value) => this.uiState.selectedSelectors.has(value));
   }
@@ -3400,6 +3455,10 @@ class UiController {
     this.uiState.showFavorites = true;
     if (this.dom.showFavoritesInput) {
       this.dom.showFavoritesInput.checked = true;
+    }
+    this.uiState.showComingSoon = false;
+    if (this.dom.showComingSoonInput) {
+      this.dom.showComingSoonInput.checked = false;
     }
 
     this.resetHeardRange();
@@ -3621,6 +3680,25 @@ class UiController {
     }
   }
 
+  readStoredAutoSaveOnCloseState() {
+    try {
+      const raw = localStorage.getItem("qobuzAutoSaveOnClose");
+      if (!raw) return true;
+      return JSON.parse(raw) !== false;
+    } catch (error) {
+      console.warn("Nie udało się odczytać ustawienia AUTO-ZAPIS:", error);
+      return true;
+    }
+  }
+
+  persistAutoSaveOnCloseState() {
+    try {
+      localStorage.setItem("qobuzAutoSaveOnClose", JSON.stringify(this.uiState.autoSaveOnClose !== false));
+    } catch (error) {
+      console.warn("Nie udało się zapisać ustawienia AUTO-ZAPIS:", error);
+    }
+  }
+
   persistStoredSelections() {
     const payload = {
       collection: this.uiState.activeCollection || "__all__",
@@ -3725,6 +3803,7 @@ class UiController {
       durationMax: this.uiState.durationRange.max,
       sortMode: this.uiState.sortMode,
       showFavorites: this.uiState.showFavorites,
+      showComingSoon: this.uiState.showComingSoon,
       containerFilter: this.dom.containerSelect?.value || "__all__",
       folderFilter: this.dom.folderSelect?.value || "__all__",
       currentPage: this.uiState.currentPage,
@@ -5410,6 +5489,11 @@ class UiController {
       this.dom.showFavoritesInput.checked = this.uiState.showFavorites;
     }
 
+    this.uiState.showComingSoon = payload.showComingSoon === true;
+    if (this.dom.showComingSoonInput) {
+      this.dom.showComingSoonInput.checked = this.uiState.showComingSoon;
+    }
+
     const remixSlots = Array.isArray(payload.remixSlots) ? payload.remixSlots : [];
     this.uiState.remixSlots = Array.from({ length: this.remixTotalSlots }, (_, index) => {
       const slot = remixSlots[index] || {};
@@ -5514,7 +5598,7 @@ class UiController {
   }
 
   async loadInitialData() {
-  try {
+    try {
       this.startOperation("🔌 Łączenie z SQLite / bazą danych i wczytywanie danych...");
       this.startProgress("Wczytywanie danych z SQLite / bazy danych...");
       const response = await this.reloadFromDatabase(false);
@@ -5653,7 +5737,8 @@ class UiController {
       heardMax: this.uiState.heardRange.max,
       durationMin: this.uiState.durationRange.min,
       durationMax: this.uiState.durationRange.max,
-      showFavorites: this.uiState.showFavorites
+      showFavorites: this.uiState.showFavorites,
+      showComingSoon: this.uiState.showComingSoon
     };
     this.store.setLabelSelection(this.uiState.selectedLabels);
     this.store.setSelectorSelection(this.uiState.selectedSelectors);
@@ -6218,9 +6303,7 @@ class UiController {
 
   getAlbumStatusType(album) {
     if (!album) return null;
-    const releaseDate = Number(album.release_date) || 0;
-    const todayStart = new Date(new Date().toDateString()).getTime() / 1000;
-    if (releaseDate && releaseDate > todayStart) {
+    if (this.store.isComingSoon(album)) {
       return "coming-soon";
     }
     const isNewRelease = this.store.isNewRelease(album);
@@ -6236,9 +6319,7 @@ class UiController {
 
   getAlbumStatusType(album) {
     if (!album) return null;
-    const releaseDate = Number(album.release_date) || 0;
-    const todayStart = new Date(new Date().toDateString()).getTime() / 1000;
-    if (releaseDate && releaseDate > todayStart) {
+    if (this.store.isComingSoon(album)) {
       return "coming-soon";
     }
     const isNewRelease = this.store.isNewRelease(album);
@@ -6459,7 +6540,27 @@ class UiController {
 
     this.applySelectorColorToCard(card, album.selector);
 
+    let ctrlLeftHandled = false;
+
+    card.addEventListener("mousedown", (event) => {
+      if (event.button !== 0) return;
+      if (!event.ctrlKey || event.shiftKey || event.metaKey) return;
+      event.preventDefault();
+      event.stopPropagation();
+      const { changed } = this.store.adjustHeard(album, 1);
+      if (changed) {
+        this.processAndRender();
+      }
+      ctrlLeftHandled = true;
+    });
+
     card.addEventListener("click", async (event) => {
+      if (ctrlLeftHandled) {
+        event.preventDefault();
+        event.stopPropagation();
+        ctrlLeftHandled = false;
+        return;
+      }
       if (
         this.uiState.ratingKey &&
         !event.ctrlKey &&
@@ -6553,14 +6654,6 @@ class UiController {
         event.preventDefault();
         event.stopPropagation();
         await this.copyAlbumDetails(album);
-        return;
-      }
-      if (event.ctrlKey && !event.shiftKey && !event.metaKey && event.button === 0) {
-        event.preventDefault();
-        const { changed } = this.store.adjustHeard(album, 1);
-        if (changed) {
-          this.processAndRender();
-        }
         return;
       }
       if (event.shiftKey && !event.ctrlKey && !event.metaKey && event.button === 0) {
@@ -7151,64 +7244,155 @@ class UiController {
     }
   }
 
-  async handleSave() {
-  if (!this.store.records.length) {
-    this.showStatusMessage("📂 Brak danych do zapisania! Najpierw pobierz dane z SQLite / bazy danych.");
-    return;
-  }
-
-  try {
-    this.startOperation("💾 Zapisuję dane do SQLite / bazy danych...");
-    this.startProgress("Zapisywanie danych do SQLite / bazy danych...");
-
-    const payload = {
-      records: this.store.getSerializableRecords(),
-      collections: this.store.getSerializableCollections(),
-      containers: this.store.getSerializableContainers(),
-      folders: this.store.getSerializableFolders(),
-      albumFolders: this.store.getSerializableAlbumFolders(),
-      sheetName: this.store.currentSheetName || "Sheet1"
-    };
-    const response = await updateWorkbook(payload);
-
-    const message = response?.message || "✅ Zapisano dane w SQLite / bazie danych.";
-    this.finishProgress(message);
-
-    if (response?.updated_at) {
-      this.store.setFileMeta({
-        name: response.file_name || this.store.currentFileName,
-        timestamp: response.updated_at || Date.now()
-      });
-      this.refreshFileStatus();
+  async handleSave({ suppressStatusMessage = false } = {}) {
+    if (!this.store.records.length) {
+      this.showStatusMessage("📂 Brak danych do zapisania! Najpierw pobierz dane z SQLite / bazy danych.");
+      return false;
     }
 
-    this.persistStoredSelections();
-    this.persistActiveFilterPreset();
-    this.persistRemixState();
-    this.persistRatingState();
-    this.flashFileUpdated();
-  } catch (error) {
-    this.showStatusMessage(`❌ Nie udało się zapisać danych: ${error.message}`);
-    console.error("Błąd zapisu", error);
-    this.stopProgress();
-  } finally {
-    this.finishOperation();
-  }
+    try {
+      this.startOperation("💾 Zapisuję dane do SQLite / bazy danych...");
+      this.startProgress("Zapisywanie danych do SQLite / bazy danych...");
+
+      const payload = {
+        records: this.store.getSerializableRecords(),
+        collections: this.store.getSerializableCollections(),
+        containers: this.store.getSerializableContainers(),
+        folders: this.store.getSerializableFolders(),
+        albumFolders: this.store.getSerializableAlbumFolders(),
+        sheetName: this.store.currentSheetName || "Sheet1"
+      };
+      const response = await updateWorkbook(payload);
+
+      const message = response?.message || "✅ Zapisano dane w SQLite / bazie danych.";
+      this.finishProgress(suppressStatusMessage ? "" : message);
+
+      if (response?.updated_at) {
+        this.store.setFileMeta({
+          name: response.file_name || this.store.currentFileName,
+          timestamp: response.updated_at || Date.now()
+        });
+        this.refreshFileStatus();
+      }
+
+      this.persistStoredSelections();
+      this.persistActiveFilterPreset();
+      this.persistRemixState();
+      this.persistRatingState();
+      this.flashFileUpdated();
+      return true;
+    } catch (error) {
+      this.showStatusMessage(`❌ Nie udało się zapisać danych: ${error.message}`);
+      console.error("Błąd zapisu", error);
+      this.stopProgress();
+      return false;
+    } finally {
+      this.finishOperation();
+    }
   }
 
-  async handleAppCloseRequest() {
-    const confirmed = await this.confirmModal({
-      title: "Zamknięcie aplikacji",
-      message: "Czy chcesz zapisać wprowadzone zmiany przed zamknięciem aplikacji?",
-      confirmText: "ZAPISZ",
-      cancelText: "ANULUJ"
-    });
-    if (confirmed) {
-      await this.handleSave();
-    }
+
+  closeAppAfterConfirmation() {
     if (window.electronAPI?.confirmAppClose) {
       window.electronAPI.confirmAppClose();
     }
+  }
+
+  cancelAppCloseRequest() {
+    if (window.electronAPI?.cancelAppClose) {
+      window.electronAPI.cancelAppClose();
+    }
+  }
+
+  promptAppCloseChoice() {
+    return new Promise((resolve) => {
+      document.querySelectorAll(".modal-overlay").forEach((el) => el.remove());
+
+      const overlay = document.createElement("div");
+      overlay.className = "modal-overlay";
+
+      const card = document.createElement("div");
+      card.className = "modal-card";
+
+      const heading = document.createElement("h4");
+      heading.className = "modal-title";
+      heading.textContent = "Zamknięcie aplikacji";
+
+      const body = document.createElement("div");
+      body.className = "modal-body";
+      body.textContent = "Czy chcesz zapisać wprowadzone zmiany przed zamknięciem aplikacji?";
+
+      const actions = document.createElement("div");
+      actions.className = "modal-actions";
+
+      const cancelBtn = document.createElement("button");
+      cancelBtn.type = "button";
+      cancelBtn.className = "modal-btn modal-btn--cancel";
+      cancelBtn.textContent = "ANULUJ";
+
+      const discardBtn = document.createElement("button");
+      discardBtn.type = "button";
+      discardBtn.className = "modal-btn";
+      discardBtn.textContent = "NIE ZAPISUJ";
+
+      const saveBtn = document.createElement("button");
+      saveBtn.type = "button";
+      saveBtn.className = "modal-btn modal-btn--confirm";
+      saveBtn.textContent = "ZAPISZ";
+
+      actions.appendChild(cancelBtn);
+      actions.appendChild(discardBtn);
+      actions.appendChild(saveBtn);
+
+      card.appendChild(heading);
+      card.appendChild(body);
+      card.appendChild(actions);
+      overlay.appendChild(card);
+      document.body.appendChild(overlay);
+
+      const cleanup = (value) => {
+        overlay.remove();
+        resolve(value);
+      };
+
+      cancelBtn.addEventListener("click", () => cleanup("cancel"));
+      discardBtn.addEventListener("click", () => cleanup("discard"));
+      saveBtn.addEventListener("click", () => cleanup("save"));
+
+      const onKeyDown = (event) => {
+        event.stopPropagation();
+        if (event.key === "Enter") {
+          event.preventDefault();
+          cleanup("save");
+        }
+      };
+      overlay.addEventListener("keydown", onKeyDown);
+      cancelBtn.addEventListener("keydown", onKeyDown);
+      discardBtn.addEventListener("keydown", onKeyDown);
+      saveBtn.addEventListener("keydown", onKeyDown);
+
+      setTimeout(() => {
+        saveBtn.focus();
+      }, 0);
+    });
+  }
+
+  async handleAppCloseRequest() {
+    if (this.uiState.autoSaveOnClose) {
+      await this.handleSave({ suppressStatusMessage: true });
+      this.closeAppAfterConfirmation();
+      return;
+    }
+
+    const action = await this.promptAppCloseChoice();
+    if (action === "cancel") {
+      this.cancelAppCloseRequest();
+      return;
+    }
+    if (action === "save") {
+      await this.handleSave({ suppressStatusMessage: true });
+    }
+    this.closeAppAfterConfirmation();
   }
 
   async handleDatabaseBackup() {

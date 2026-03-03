@@ -1841,6 +1841,13 @@ function registerHandlers() {
     return maximizeTidalWindow();
   });
 
+
+  ipcMain.on("app-close-cancelled", () => {
+    clearCloseTimeout();
+    closeInProgress = false;
+    quitRequested = false;
+  });
+
   ipcMain.on("app-close-confirmed", () => {
     clearCloseTimeout();
     closeInProgress = false;
