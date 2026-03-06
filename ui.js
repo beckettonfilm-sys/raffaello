@@ -4853,8 +4853,26 @@ class UiController {
     };
 
     const toDateParts = (text) => {
-      const m = String(text || "").match(/^(\d{2})\.(\d{2})\.(\d{4})$/);
-      return m ? [m[1], m[2], m[3]] : ["", "", ""];
+      const match = String(text || "").match(/^(\d{1,2})\.(\d{1,2})\.(\d{4})$/);
+      if (!match) return ["", "", ""];
+      return [match[1], match[2], match[3]];
+    };
+
+    const validateGeneralDateInput = (inputs) => {
+      const values = inputs.map((input) => String(input?.value || "").trim());
+      const hasAny = values.some((value) => value !== "");
+      if (!hasAny) return { valid: true, value: "" };
+      if (values.some((value) => value !== "" && !/^\d+$/.test(value))) {
+        return { valid: false, value: "" };
+      }
+      const parsed = this.parseReleaseDateParts(values[0], values[1], values[2]);
+      if (!parsed) return { valid: false, value: "" };
+      const date = new Date(parsed * 1000);
+      if (Number.isNaN(date.getTime())) return { valid: false, value: "" };
+      return {
+        valid: true,
+        value: `${pad2(date.getDate())}.${pad2(date.getMonth() + 1)}.${date.getFullYear()}`
+      };
     };
 
     const pad2 = (value) => String(value).padStart(2, "0");
@@ -4983,10 +5001,14 @@ class UiController {
       labelsNextBtn.disabled = state.activeTab !== "labels" || state.labelsPage >= totalPages;
     };
 
+    const generalDateInputs = {};
+
     const renderGeneral = () => {
       hideTooltip();
       body.innerHTML = "";
       labelsPagination.remove();
+      generalDateInputs.date_from = null;
+      generalDateInputs.date_to = null;
       const fields = [
         ["new_releases_auto", "NEW RELEASES AUTO"],
         ["new_releases", "NEW RELEASES"],
@@ -5052,10 +5074,10 @@ class UiController {
           const inputs = [d, m, y].map((val, idx) => {
             const input = document.createElement("input");
             input.type = "text";
+            input.inputMode = "numeric";
             input.maxLength = idx === 2 ? 4 : 2;
             input.value = val;
             input.className = "modal-input modal-input--segment modal-input--locked";
-            input.readOnly = true;
             dateWrap.appendChild(input);
             if (idx < 2) {
               const sep = document.createElement("span");
@@ -5074,10 +5096,12 @@ class UiController {
             input.readOnly = isAutoDateLocked;
             input.classList.toggle("modal-input--locked", isAutoDateLocked);
           });
+          generalDateInputs[key] = inputs;
           state.general[key] = `${inputs[0].value}.${inputs[1].value}.${inputs[2].value}`;
-          inputs.forEach((input) => input.addEventListener("input", () => {
+          inputs.forEach((input, idx) => input.addEventListener("input", () => {
+            const cleaned = input.value.replace(/\D/g, "");
+            input.value = cleaned.slice(0, idx === 2 ? 4 : 2);
             state.general[key] = `${inputs[0].value}.${inputs[1].value}.${inputs[2].value}`;
-            renderGeneral();
           }));
         } else {
           const input = document.createElement("input");
@@ -5234,6 +5258,14 @@ class UiController {
     });
     saveBtn.addEventListener("click", async () => {
       try {
+        const dateFromValidation = validateGeneralDateInput(generalDateInputs.date_from || []);
+        const dateToValidation = validateGeneralDateInput(generalDateInputs.date_to || []);
+        if (!dateFromValidation.valid || !dateToValidation.valid) {
+          await this.infoModal({ message: "Wprowadzono nieprawidłową wartość." });
+          return;
+        }
+        state.general.date_from = dateFromValidation.value;
+        state.general.date_to = dateToValidation.value;
         await saveQobuzSettings({
           general: state.general,
           labels: state.labels.map((label, sortOrder) => ({ ...label, sort_order: sortOrder }))
