@@ -777,7 +777,7 @@ body::-webkit-scrollbar {
 .filter-tabs--filters {
   display: grid;
   width: 100%;
-  grid-template-columns: repeat(5, minmax(0, 1fr));
+  grid-template-columns: repeat(6, minmax(0, 1fr));
   gap: 8px;
   align-items: center;
 }
@@ -2627,4 +2627,39 @@ main::-webkit-scrollbar {
 
 .settings-tooltip.is-visible {
   display: block;
+}
+
+
+.filter-shortcuts__list {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px 12px;
+}
+
+.filter-shortcuts__row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.filter-shortcuts__label {
+  flex: 0 0 155px;
+  color: #f5f5f5;
+  font-size: 0.86rem;
+  font-weight: 600;
+}
+
+.filter-shortcuts__select {
+  flex: 1 1 auto;
+  min-width: 0;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 10px;
+  padding: 7px 9px;
+  color: #f5f5f5;
+  font-weight: 600;
+}
+
+.filter-shortcuts__select option {
+  color: #000;
 }
