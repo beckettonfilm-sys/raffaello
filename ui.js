@@ -263,6 +263,7 @@ class UiController {
       showFavorites: true,
       showComingSoon: false,
       showFavoriteCorners: true,
+      filterPresetsLoaded: false,
       autoSaveOnClose: this.readStoredAutoSaveOnCloseState(),
       cdBackGlobalEnabled: true,
       showRatings: this.readStoredRatingState(),
@@ -3614,6 +3615,7 @@ class UiController {
       console.warn("Nie udało się wczytać zapisanych filtrów:", error);
       this.uiState.filterPresets = [];
     }
+    this.uiState.filterPresetsLoaded = true;
     this.updateFilterPresetOptions();
     this.applyStoredFilterPresetOnce();
   }
@@ -3648,6 +3650,7 @@ class UiController {
 
   updateShortcutPresetOptions() {
     const presetNames = this.uiState.filterPresets.map((preset) => preset.name);
+    const presetsLoaded = this.uiState.filterPresetsLoaded === true;
     FILTER_SHORTCUT_SLOTS.forEach(({ key }) => {
       const select = this.dom.shortcutSelects?.[key];
       if (!select) return;
@@ -3665,9 +3668,30 @@ class UiController {
       });
 
       const assigned = this.uiState.shortcutAssignments[key] || "__none__";
-      select.value = presetNames.includes(assigned) ? assigned : "__none__";
-      this.uiState.shortcutAssignments[key] = select.value;
+      const isKnownAssignment = assigned === "__none__" || presetNames.includes(assigned);
+      if (!isKnownAssignment && !presetsLoaded) {
+        const transientOption = document.createElement("option");
+        transientOption.value = assigned;
+        transientOption.textContent = assigned;
+        select.appendChild(transientOption);
+      }
+      select.value = isKnownAssignment || !presetsLoaded ? assigned : "__none__";
     });
+  }
+
+  getNormalizedShortcutAssignments() {
+    const assignments = createDefaultShortcutAssignments();
+    FILTER_SHORTCUT_SLOTS.forEach(({ key }) => {
+      const value = this.uiState.shortcutAssignments?.[key];
+      assignments[key] = typeof value === "string" && value.trim() ? value : "__none__";
+    });
+    return assignments;
+  }
+
+  async flushShortcutAssignments() {
+    const assignments = this.getNormalizedShortcutAssignments();
+    this.uiState.shortcutAssignments = assignments;
+    await saveFilterShortcuts(assignments);
   }
 
   setActiveFilterPreset(name, { silent = false } = {}) {
@@ -7475,6 +7499,12 @@ class UiController {
   }
 
   async handleSave({ suppressStatusMessage = false } = {}) {
+    try {
+      await this.flushShortcutAssignments();
+    } catch (error) {
+      console.warn("Nie udało się wykonać pełnego zapisu skrótów filtrów:", error);
+    }
+
     if (!this.store.records.length) {
       this.showStatusMessage("📂 Brak danych do zapisania! Najpierw pobierz dane z SQLite / bazy danych.");
       return false;
@@ -7608,6 +7638,12 @@ class UiController {
   }
 
   async handleAppCloseRequest() {
+    try {
+      await this.flushShortcutAssignments();
+    } catch (error) {
+      console.warn("Nie udało się zapisać skrótów filtrów przed zamknięciem aplikacji:", error);
+    }
+
     if (this.uiState.autoSaveOnClose) {
       await this.handleSave({ suppressStatusMessage: true });
       this.closeAppAfterConfirmation();
