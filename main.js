@@ -20,6 +20,9 @@ const {
   saveFilterPreset,
   renameFilterPreset,
   deleteFilterPreset,
+  getFilterShortcuts,
+  saveFilterShortcut,
+  saveFilterShortcuts,
   fetchQobuzScrapeSettings,
   saveQobuzScrapeSettings,
   createDatabaseBackup,
@@ -1153,6 +1156,35 @@ function registerHandlers() {
     return { status: "ok" };
   });
 
+
+  ipcMain.handle("fetch-filter-shortcuts", async (_event, payload = {}) => {
+    await ensureSchema();
+    const keys = Array.isArray(payload?.keys) ? payload.keys : [];
+    const assignments = await getFilterShortcuts(keys);
+    return {
+      status: "ok",
+      assignments
+    };
+  });
+
+  ipcMain.handle("save-filter-shortcut", async (_event, payload = {}) => {
+    const shortcutKey = String(payload?.shortcutKey || "").trim();
+    if (!shortcutKey) {
+      throw new Error("Klucz skrótu jest wymagany.");
+    }
+    await ensureSchema();
+    await saveFilterShortcut(shortcutKey, payload?.presetName);
+    return { status: "ok" };
+  });
+
+  ipcMain.handle("save-filter-shortcuts", async (_event, payload = {}) => {
+    await ensureSchema();
+    const assignments = payload?.assignments && typeof payload.assignments === "object"
+      ? payload.assignments
+      : {};
+    await saveFilterShortcuts(assignments);
+    return { status: "ok" };
+  });
   ipcMain.handle("delete-filter-preset", async (_event, payload = {}) => {
     const name = String(payload?.name || "").trim();
     if (!name) {
