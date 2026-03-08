@@ -30,6 +30,9 @@ import {
   saveTextFile,
   readTextFile,
   fetchFilterPresets,
+  fetchFilterShortcuts,
+  saveFilterShortcut,
+  saveFilterShortcuts,
   saveFilterPreset,
   renameFilterPreset,
   deleteFilterPreset,
@@ -200,6 +203,10 @@ const FILTER_SHORTCUT_SLOTS = [
   }))
 ];
 
+function createDefaultShortcutAssignments() {
+  return Object.fromEntries(FILTER_SHORTCUT_SLOTS.map(({ key }) => [key, "__none__"]));
+}
+
 function truncateForStatus(name, maxLength = 15) {
   if (!name) return "";
   if (name.length <= maxLength) return name;
@@ -281,7 +288,7 @@ class UiController {
       ratingKey: null,
       formatOptions: [],
       formatLookup: { byCode: new Map(), byLabel: new Map() },
-      shortcutAssignments: this.readStoredShortcuts()
+      shortcutAssignments: createDefaultShortcutAssignments()
     };
     const storedRemix = this.readStoredRemixState();
     if (storedRemix) {
@@ -295,9 +302,10 @@ class UiController {
     this.progressValue = 0;
   }
 
-  init() {
+  async init() {
     this.cacheDom();
     this.uiState.storedFilterPreset = this.readStoredFilterPreset();
+    await this.loadShortcutAssignments();
     this.buildFilterPanel();
     this.setRatingVisibility(this.uiState.showRatings);
     this.buildOptionsPanel();
@@ -986,7 +994,8 @@ class UiController {
       { id: "shortcuts", label: "SHORTCUTS", builder: () => this.createShortcutsSection() },
       { id: "label", label: "LABELS", builder: () => this.createLabelsSection() },
       { id: "selector", label: "SELECTOR", builder: () => this.createSelectorSection() },
-      { id: "search", label: "SEARCH & DATA", builder: () => this.createSearchSection() },
+      { id: "search", label: "SEARCH", builder: () => this.createSearchOnlySection() },
+      { id: "data", label: "DATA", builder: () => this.createDataSection() },
       { id: "time", label: "TIME", builder: () => this.createTimeSection() }
     ];
 
@@ -1355,6 +1364,20 @@ class UiController {
     const list = document.createElement("div");
     list.className = "filter-shortcuts__list";
 
+    const commandColumn = document.createElement("div");
+    commandColumn.className = "filter-shortcuts__column";
+    const commandTitle = document.createElement("h4");
+    commandTitle.className = "filter-shortcuts__column-title";
+    commandTitle.textContent = "Command (⌘)";
+    commandColumn.appendChild(commandTitle);
+
+    const controlColumn = document.createElement("div");
+    controlColumn.className = "filter-shortcuts__column";
+    const controlTitle = document.createElement("h4");
+    controlTitle.className = "filter-shortcuts__column-title";
+    controlTitle.textContent = "Control (⌃)";
+    controlColumn.appendChild(controlTitle);
+
     FILTER_SHORTCUT_SLOTS.forEach(({ key, label }) => {
       const row = document.createElement("div");
       row.className = "filter-shortcuts__row";
@@ -1366,15 +1389,25 @@ class UiController {
       const select = document.createElement("select");
       select.className = "filter-shortcuts__select";
       select.dataset.shortcut = key;
-      select.addEventListener("change", () => {
-        this.uiState.shortcutAssignments[key] = select.value || "__none__";
+      select.addEventListener("change", async () => {
+        const nextValue = select.value || "__none__";
+        this.uiState.shortcutAssignments[key] = nextValue;
+        await this.persistShortcut(key, nextValue);
       });
 
       this.dom.shortcutSelects[key] = select;
       row.appendChild(rowLabel);
       row.appendChild(select);
-      list.appendChild(row);
+
+      if (key.startsWith("command_")) {
+        commandColumn.appendChild(row);
+      } else {
+        controlColumn.appendChild(row);
+      }
     });
+
+    list.appendChild(commandColumn);
+    list.appendChild(controlColumn);
 
     wrapper.appendChild(list);
     this.updateShortcutPresetOptions();
@@ -1454,7 +1487,7 @@ class UiController {
     return infoSection;
   }
 
-  createSearchSection() {
+  createSearchOnlySection() {
     const searchSection = document.createElement("div");
     searchSection.className = "filter-section";
     searchSection.appendChild(this.createSectionTitle("SEARCH"));
@@ -1496,7 +1529,15 @@ class UiController {
     searchSpacer.className = "filter-search__spacer";
     searchSection.appendChild(searchSpacer);
 
-    searchSection.appendChild(this.createSectionTitle("DATA"));
+    this.dom.searchInput = searchInput;
+    this.dom.searchSuggestions = searchSuggestions;
+    return searchSection;
+  }
+
+  createDataSection() {
+    const dataSection = document.createElement("div");
+    dataSection.className = "filter-section";
+    dataSection.appendChild(this.createSectionTitle("DATA"));
 
     const skipFolderRow = document.createElement("div");
     skipFolderRow.className = "filter-toggle-row";
@@ -1520,7 +1561,7 @@ class UiController {
     });
     skipFolderRow.appendChild(skipLabel);
     skipFolderRow.appendChild(skipSwitch.wrapper);
-    searchSection.appendChild(skipFolderRow);
+    dataSection.appendChild(skipFolderRow);
 
     const refreshModeRow = document.createElement("div");
     refreshModeRow.className = "filter-toggle-row";
@@ -1555,7 +1596,7 @@ class UiController {
     });
     refreshModeRow.appendChild(refreshModeLabel);
     refreshModeRow.appendChild(refreshModeSwitch.wrapper);
-    searchSection.appendChild(refreshModeRow);
+    dataSection.appendChild(refreshModeRow);
 
     const favoriteCornerRow = document.createElement("div");
     favoriteCornerRow.className = "filter-toggle-row";
@@ -1589,7 +1630,7 @@ class UiController {
     });
     favoriteCornerRow.appendChild(favoriteCornerLabel);
     favoriteCornerRow.appendChild(favoriteCornerSwitch.wrapper);
-    searchSection.appendChild(favoriteCornerRow);
+    dataSection.appendChild(favoriteCornerRow);
 
     const cdBackGlobalRow = document.createElement("div");
     cdBackGlobalRow.className = "filter-toggle-row";
@@ -1619,7 +1660,7 @@ class UiController {
     });
     cdBackGlobalRow.appendChild(cdBackGlobalLabel);
     cdBackGlobalRow.appendChild(cdBackGlobalSwitch.wrapper);
-    searchSection.appendChild(cdBackGlobalRow);
+    dataSection.appendChild(cdBackGlobalRow);
 
     const autoSaveOnCloseRow = document.createElement("div");
     autoSaveOnCloseRow.className = "filter-toggle-row";
@@ -1654,7 +1695,7 @@ class UiController {
     });
     autoSaveOnCloseRow.appendChild(autoSaveOnCloseLabel);
     autoSaveOnCloseRow.appendChild(autoSaveOnCloseSwitch.wrapper);
-    searchSection.appendChild(autoSaveOnCloseRow);
+    dataSection.appendChild(autoSaveOnCloseRow);
 
     const dateRange = document.createElement("div");
     dateRange.className = "filter-date-range";
@@ -1854,18 +1895,15 @@ class UiController {
 
     dateRange.appendChild(fromBlock.block);
     dateRange.appendChild(toBlock.block);
-    searchSection.appendChild(dateRange);
+    dataSection.appendChild(dateRange);
 
-    searchInput.addEventListener("blur", () => this.deferHideSuggestions(searchSuggestions));
-    this.dom.searchInput = searchInput;
-    this.dom.searchSuggestions = searchSuggestions;
     this.dom.releaseYearFrom = fromBlock.yearControl.input;
     this.dom.releaseMonthFrom = fromBlock.monthButton;
     this.dom.releaseYearTo = toBlock.yearControl.input;
     this.dom.releaseMonthTo = toBlock.monthButton;
     this.dom.releaseYearFromControl = fromBlock.yearControl;
     this.dom.releaseYearToControl = toBlock.yearControl;
-    return searchSection;
+    return dataSection;
   }
 
   createSelectorSection() {
@@ -3655,31 +3693,57 @@ class UiController {
     }
   }
 
-  readStoredShortcuts() {
-    const fallback = Object.fromEntries(FILTER_SHORTCUT_SLOTS.map(({ key }) => [key, "__none__"]));
+  async loadShortcutAssignments() {
+    const fallback = createDefaultShortcutAssignments();
     try {
-      const raw = localStorage.getItem("qobuzFilterShortcuts");
-      if (!raw) return fallback;
-      const parsed = JSON.parse(raw);
-      if (!parsed || typeof parsed !== "object") return fallback;
+      const keys = FILTER_SHORTCUT_SLOTS.map(({ key }) => key);
+      const assignments = await fetchFilterShortcuts(keys);
       FILTER_SHORTCUT_SLOTS.forEach(({ key }) => {
-        fallback[key] = typeof parsed[key] === "string" ? parsed[key] : "__none__";
+        fallback[key] = typeof assignments?.[key] === "string" ? assignments[key] : "__none__";
       });
-      return fallback;
+
+      const shouldMigrate = FILTER_SHORTCUT_SLOTS.every(({ key }) => fallback[key] === "__none__");
+      if (shouldMigrate) {
+        const migrated = this.tryMigrateLegacyShortcutsFromLocalStorage();
+        if (migrated) {
+          await saveFilterShortcuts(migrated);
+          FILTER_SHORTCUT_SLOTS.forEach(({ key }) => {
+            fallback[key] = migrated[key] || "__none__";
+          });
+        }
+      }
+
+      this.uiState.shortcutAssignments = fallback;
     } catch (error) {
-      console.warn("Nie udało się odczytać skrótów filtrów:", error);
-      return fallback;
+      console.warn("Nie udało się wczytać skrótów filtrów z SQLite:", error);
+      this.uiState.shortcutAssignments = fallback;
     }
   }
 
-  persistShortcuts() {
-    const payload = Object.fromEntries(
-      FILTER_SHORTCUT_SLOTS.map(({ key }) => [key, this.uiState.shortcutAssignments[key] || "__none__"])
-    );
+  tryMigrateLegacyShortcutsFromLocalStorage() {
     try {
-      localStorage.setItem("qobuzFilterShortcuts", JSON.stringify(payload));
+      const raw = localStorage.getItem("qobuzFilterShortcuts");
+      if (!raw) return null;
+      const parsed = JSON.parse(raw);
+      if (!parsed || typeof parsed !== "object") return null;
+      const migrated = createDefaultShortcutAssignments();
+      let hasValue = false;
+      FILTER_SHORTCUT_SLOTS.forEach(({ key }) => {
+        const value = typeof parsed[key] === "string" ? parsed[key].trim() : "";
+        if (value && value !== "__none__") hasValue = true;
+        migrated[key] = value || "__none__";
+      });
+      return hasValue ? migrated : null;
+    } catch (_error) {
+      return null;
+    }
+  }
+
+  async persistShortcut(shortcutKey, presetName) {
+    try {
+      await saveFilterShortcut(shortcutKey, presetName);
     } catch (error) {
-      console.warn("Nie udało się zapisać skrótów filtrów:", error);
+      console.warn("Nie udało się zapisać skrótu filtra:", error);
     }
   }
 
@@ -7444,7 +7508,6 @@ class UiController {
       this.persistStoredSelections();
       this.persistActiveFilterPreset();
       this.persistRemixState();
-      this.persistShortcuts();
       this.persistRatingState();
       this.flashFileUpdated();
       return true;

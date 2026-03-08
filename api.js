@@ -181,6 +181,33 @@ async function fetchFilterPresets() {
   return response.presets || [];
 }
 
+
+async function fetchFilterShortcuts(keys = []) {
+  const api = ensureElectronAPI();
+  const response = await api.fetchFilterShortcuts({ keys });
+  if (!response || response.status !== "ok") {
+    throw new Error(response?.error || "Nie udało się pobrać skrótów filtrów");
+  }
+  return response.assignments || {};
+}
+
+async function saveFilterShortcut(shortcutKey, presetName) {
+  const api = ensureElectronAPI();
+  const response = await api.saveFilterShortcut({ shortcutKey, presetName });
+  if (!response || response.status !== "ok") {
+    throw new Error(response?.error || "Nie udało się zapisać skrótu filtra");
+  }
+  return response;
+}
+
+async function saveFilterShortcuts(assignments = {}) {
+  const api = ensureElectronAPI();
+  const response = await api.saveFilterShortcuts({ assignments });
+  if (!response || response.status !== "ok") {
+    throw new Error(response?.error || "Nie udało się zapisać skrótów filtrów");
+  }
+  return response;
+}
 async function saveFilterPreset(name, filters) {
   const api = ensureElectronAPI();
   const response = await api.saveFilterPreset({ name, filters });
@@ -291,6 +318,9 @@ export {
   saveTextFile,
   readTextFile,
   fetchFilterPresets,
+  fetchFilterShortcuts,
+  saveFilterShortcut,
+  saveFilterShortcuts,
   saveFilterPreset,
   renameFilterPreset,
   deleteFilterPreset,

@@ -29,6 +29,7 @@ const resolvedConfig = {
 
 const TABLE_NAME = resolvedConfig.table || "zajebiste_dane";
 const FILTER_TABLE_NAME = "filtr_data";
+const FILTER_SHORTCUTS_TABLE_NAME = "filter_shortcuts";
 const QOBUZ_GENERAL_TABLE_NAME = "qobuz_scrape_general";
 const QOBUZ_LABELS_TABLE_NAME = "qobuz_scrape_labels";
 const COLLECTIONS_TABLE_NAME = "collections";
@@ -53,6 +54,11 @@ const QOBUZ_GENERAL_DEFAULTS = {
   retries: 3,
   timeout_ms: 20000
 };
+
+const FILTER_SHORTCUT_DEFAULT_KEYS = [
+  ...Array.from({ length: 10 }, (_, index) => `command_${index}`),
+  ...Array.from({ length: 10 }, (_, index) => `control_${index}`)
+];
 
 const QOBUZ_INITIAL_LABELS = [
   ["Alpha Classics", "https://www.qobuz.com/us-en/label/alpha-classics-1/download-streaming-albums/1950819?ssf%5BsortBy%5D=main_catalog_date_desc"],
@@ -548,6 +554,16 @@ async function ensureSchema() {
 
   await run(
     db,
+    `CREATE TABLE IF NOT EXISTS "${FILTER_SHORTCUTS_TABLE_NAME}" (
+      shortcut_key TEXT PRIMARY KEY,
+      preset_name TEXT NOT NULL DEFAULT '__none__'
+    )`
+  );
+
+  await ensureDefaultFilterShortcutRows(db);
+
+  await run(
+    db,
     `CREATE TABLE IF NOT EXISTS "${QOBUZ_GENERAL_TABLE_NAME}" (
       id INTEGER PRIMARY KEY CHECK (id = 1),
       date_from TEXT NOT NULL,
@@ -625,6 +641,97 @@ async function ensureSchema() {
         [index, label.name, label.url]
       );
     }
+  }
+}
+
+function normalizeShortcutKeys(keys = []) {
+  const source = Array.isArray(keys) && keys.length ? keys : FILTER_SHORTCUT_DEFAULT_KEYS;
+  const unique = new Set();
+  source.forEach((key) => {
+    const normalized = String(key || "").trim();
+    if (normalized) unique.add(normalized);
+  });
+  return Array.from(unique);
+}
+
+function normalizeShortcutPresetName(value) {
+  const name = String(value || "").trim();
+  return name || "__none__";
+}
+
+async function ensureDefaultFilterShortcutRows(db, keys = []) {
+  const normalizedKeys = normalizeShortcutKeys(keys);
+  if (!normalizedKeys.length) return;
+  for (const key of normalizedKeys) {
+    await run(
+      db,
+      `INSERT OR IGNORE INTO "${FILTER_SHORTCUTS_TABLE_NAME}" (shortcut_key, preset_name) VALUES (?, '__none__')`,
+      [key]
+    );
+  }
+}
+
+async function getFilterShortcuts(keys = []) {
+  const db = await getDatabase();
+  const normalizedKeys = normalizeShortcutKeys(keys);
+  await ensureDefaultFilterShortcutRows(db, normalizedKeys);
+  const rows = await all(
+    db,
+    `SELECT shortcut_key, preset_name
+     FROM "${FILTER_SHORTCUTS_TABLE_NAME}"
+     ${normalizedKeys.length ? `WHERE shortcut_key IN (${normalizedKeys.map(() => "?").join(", ")})` : ""}`,
+    normalizedKeys
+  );
+  const assignments = Object.fromEntries(normalizedKeys.map((key) => [key, "__none__"]));
+  rows.forEach((row) => {
+    const key = String(row?.shortcut_key || "").trim();
+    if (!key || !Object.prototype.hasOwnProperty.call(assignments, key)) return;
+    assignments[key] = normalizeShortcutPresetName(row?.preset_name);
+  });
+  return assignments;
+}
+
+async function saveFilterShortcut(shortcutKey, presetName) {
+  const db = await getDatabase();
+  const key = String(shortcutKey || "").trim();
+  if (!key) {
+    throw new Error("Klucz skrótu jest wymagany.");
+  }
+  await ensureDefaultFilterShortcutRows(db, [key]);
+  await run(
+    db,
+    `INSERT INTO "${FILTER_SHORTCUTS_TABLE_NAME}" (shortcut_key, preset_name)
+     VALUES (?, ?)
+     ON CONFLICT(shortcut_key) DO UPDATE SET preset_name = excluded.preset_name`,
+    [key, normalizeShortcutPresetName(presetName)]
+  );
+}
+
+async function saveFilterShortcuts(assignments = {}) {
+  const db = await getDatabase();
+  const entries = Object.entries(assignments || {})
+    .map(([key, value]) => [String(key || "").trim(), normalizeShortcutPresetName(value)])
+    .filter(([key]) => key);
+  if (!entries.length) return;
+  await run(db, "BEGIN TRANSACTION");
+  try {
+    await ensureDefaultFilterShortcutRows(
+      db,
+      entries.map(([key]) => key)
+    );
+    for (const [key, value] of entries) {
+      await run(
+        db,
+        `INSERT INTO "${FILTER_SHORTCUTS_TABLE_NAME}" (shortcut_key, preset_name)
+         VALUES (?, ?)
+         ON CONFLICT(shortcut_key) DO UPDATE SET preset_name = excluded.preset_name`,
+        [key, value]
+      );
+    }
+    await run(db, "COMMIT");
+  } catch (error) {
+    await run(db, "ROLLBACK");
+    throw error;
   }
 }
 
@@ -1562,6 +1669,9 @@ module.exports = {
   saveFilterPreset,
   renameFilterPreset,
   deleteFilterPreset,
+  getFilterShortcuts,
+  saveFilterShortcut,
+  saveFilterShortcuts,
   fetchQobuzScrapeSettings,
   saveQobuzScrapeSettings,
   createDatabaseBackup,
