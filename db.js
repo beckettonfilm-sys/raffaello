@@ -55,9 +55,11 @@ const QOBUZ_GENERAL_DEFAULTS = {
   timeout_ms: 20000
 };
 
+const FILTER_SHORTCUT_DIGITS = [1, 2, 3, 4, 5, 6, 7, 8, 9, 0];
+
 const FILTER_SHORTCUT_DEFAULT_KEYS = [
-  ...Array.from({ length: 10 }, (_, index) => `command_${index}`),
-  ...Array.from({ length: 10 }, (_, index) => `control_${index}`)
+  ...FILTER_SHORTCUT_DIGITS.map((digit) => `command_${digit}`),
+  ...FILTER_SHORTCUT_DIGITS.map((digit) => `control_${digit}`)
 ];
 
 const QOBUZ_INITIAL_LABELS = [

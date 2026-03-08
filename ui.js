@@ -192,14 +192,16 @@ const INFO_SHORTCUTS = [
   }
 ];
 
+const FILTER_SHORTCUT_DIGITS = [1, 2, 3, 4, 5, 6, 7, 8, 9, 0];
+
 const FILTER_SHORTCUT_SLOTS = [
-  ...Array.from({ length: 10 }, (_, index) => ({
-    key: `command_${index}`,
-    label: `Command (⌘) + ${index}`
+  ...FILTER_SHORTCUT_DIGITS.map((digit) => ({
+    key: `command_${digit}`,
+    label: `Command (⌘) + ${digit}`
   })),
-  ...Array.from({ length: 10 }, (_, index) => ({
-    key: `control_${index}`,
-    label: `Control (⌃) + ${index}`
+  ...FILTER_SHORTCUT_DIGITS.map((digit) => ({
+    key: `control_${digit}`,
+    label: `Control (⌃) + ${digit}`
   }))
 ];
 
@@ -291,6 +293,7 @@ class UiController {
       formatLookup: { byCode: new Map(), byLabel: new Map() },
       shortcutAssignments: createDefaultShortcutAssignments()
     };
+    this.filterPresetPagesDirty = new Set();
     const storedRemix = this.readStoredRemixState();
     if (storedRemix) {
       this.uiState.remixEnabled = storedRemix.enabled;
@@ -855,6 +858,7 @@ class UiController {
       this.uiState.pageByCategory = {};
     }
     this.uiState.pageByCategory[this.uiState.currentCategory] = nextPage;
+    this.syncActivePresetPageInMemory(nextPage);
   }
 
   resetCurrentPage() {
@@ -3610,7 +3614,12 @@ class UiController {
   async loadFilterPresets() {
     try {
       const presets = await fetchFilterPresets();
-      this.uiState.filterPresets = Array.isArray(presets) ? presets : [];
+      this.uiState.filterPresets = Array.isArray(presets)
+        ? presets.map((preset) => ({
+            ...preset,
+            payload: this.normalizeFilterPresetPayload(preset?.payload)
+          }))
+        : [];
     } catch (error) {
       console.warn("Nie udało się wczytać zapisanych filtrów:", error);
       this.uiState.filterPresets = [];
@@ -3788,6 +3797,7 @@ class UiController {
     const preset = this.uiState.filterPresets.find((item) => item.name === presetName);
     if (!preset) return;
     event.preventDefault();
+    this.syncActivePresetPageInMemory();
     this.setActiveFilterPreset(preset.name, { silent: true });
     this.applyFilterPreset(preset);
   }
@@ -4006,6 +4016,60 @@ class UiController {
       entries.push({ folder, albums });
     });
     return entries;
+  }
+
+  normalizeFilterPresetPayload(payload) {
+    let normalized = payload;
+    if (typeof normalized === "string") {
+      try {
+        normalized = JSON.parse(normalized);
+      } catch (error) {
+        normalized = {};
+      }
+    }
+    if (!normalized || typeof normalized !== "object") {
+      normalized = {};
+    }
+    const parsedCurrentPage = Number(normalized.currentPage ?? normalized.page);
+    const safeCurrentPage = Number.isInteger(parsedCurrentPage) && parsedCurrentPage >= 0 ? parsedCurrentPage : 0;
+    return {
+      ...normalized,
+      currentPage: safeCurrentPage
+    };
+  }
+
+  getFilterPresetByName(name) {
+    if (!name || name === "__none__") return null;
+    return this.uiState.filterPresets.find((item) => item.name === name) || null;
+  }
+
+  syncActivePresetPageInMemory(page = this.uiState.currentPage) {
+    const activeName = this.uiState.activeFilterPreset;
+    const preset = this.getFilterPresetByName(activeName);
+    if (!preset) return;
+    const payload = this.normalizeFilterPresetPayload(preset.payload);
+    const safePage = Number.isInteger(page) && page >= 0 ? page : 0;
+    if (payload.currentPage === safePage) return;
+    preset.payload = {
+      ...payload,
+      currentPage: safePage
+    };
+    this.filterPresetPagesDirty.add(activeName);
+  }
+
+  async flushDirtyFilterPresetPages() {
+    if (!this.filterPresetPagesDirty.size) return;
+    const dirtyNames = Array.from(this.filterPresetPagesDirty);
+    for (const name of dirtyNames) {
+      const preset = this.getFilterPresetByName(name);
+      if (!preset) {
+        this.filterPresetPagesDirty.delete(name);
+        continue;
+      }
+      const payload = this.normalizeFilterPresetPayload(preset.payload);
+      await saveFilterPreset(name, payload);
+      this.filterPresetPagesDirty.delete(name);
+    }
   }
 
   serializeCurrentFilters() {
@@ -5641,6 +5705,7 @@ class UiController {
 
   handlePresetSelectionChange(event) {
     const selected = event.target.value;
+    this.syncActivePresetPageInMemory();
     this.uiState.activeFilterPreset = selected;
     this.persistActiveFilterPreset();
     if (selected === "__none__") {
@@ -5654,15 +5719,7 @@ class UiController {
   }
 
   applyFilterPreset(preset) {
-    let payload = preset.payload;
-    if (typeof payload === "string") {
-      try {
-        payload = JSON.parse(payload);
-      } catch (error) {
-        console.warn("Nie udało się odczytać zapisanych filtrów:", error);
-        return;
-      }
-    }
+    const payload = this.normalizeFilterPresetPayload(preset?.payload);
     if (!payload || typeof payload !== "object") return;
 
     const { filterPanel } = this.dom;
@@ -5803,7 +5860,7 @@ class UiController {
     }
 
     this.setActiveFilterPreset(preset.name, { silent: true });
-    const parsedPage = Number(payload.currentPage);
+    const parsedPage = Number(payload.currentPage ?? payload.page);
     if (Number.isInteger(parsedPage) && parsedPage >= 0) {
       this.setCurrentPage(parsedPage);
     } else {
@@ -7499,6 +7556,13 @@ class UiController {
   }
 
   async handleSave({ suppressStatusMessage = false } = {}) {
+    try {
+      this.syncActivePresetPageInMemory();
+      await this.flushDirtyFilterPresetPages();
+    } catch (error) {
+      console.warn("Nie udało się zapisać stron paginacji filtrów:", error);
+    }
+
     try {
       await this.flushShortcutAssignments();
     } catch (error) {
