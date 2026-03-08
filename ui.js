@@ -189,6 +189,17 @@ const INFO_SHORTCUTS = [
   }
 ];
 
+const FILTER_SHORTCUT_SLOTS = [
+  ...Array.from({ length: 10 }, (_, index) => ({
+    key: `command_${index}`,
+    label: `Command (⌘) + ${index}`
+  })),
+  ...Array.from({ length: 10 }, (_, index) => ({
+    key: `control_${index}`,
+    label: `Control (⌃) + ${index}`
+  }))
+];
+
 function truncateForStatus(name, maxLength = 15) {
   if (!name) return "";
   if (name.length <= maxLength) return name;
@@ -269,7 +280,8 @@ class UiController {
       },
       ratingKey: null,
       formatOptions: [],
-      formatLookup: { byCode: new Map(), byLabel: new Map() }
+      formatLookup: { byCode: new Map(), byLabel: new Map() },
+      shortcutAssignments: this.readStoredShortcuts()
     };
     const storedRemix = this.readStoredRemixState();
     if (storedRemix) {
@@ -466,7 +478,8 @@ class UiController {
       searchSuggestions: null,
       dataModeToggles: {},
       dataModeLabels: {},
-      dataDirectoryHints: {}
+      dataDirectoryHints: {},
+      shortcutSelects: {}
     };
   }
 
@@ -653,6 +666,11 @@ class UiController {
       this.resetCurrentPage();
       this.renderAlbumsPage();
       this.showRemixStatus("Przeładowano losowe ułożenie albumów.", "on");
+    });
+
+    document.addEventListener("keydown", (event) => {
+      if (shouldIgnoreKeyEvent(event)) return;
+      this.handleFilterShortcutKeydown(event);
     });
 
     document.addEventListener("keydown", (event) => {
@@ -965,6 +983,7 @@ class UiController {
 
     const tabs = [
       { id: "remix", label: "REMIX", builder: () => this.createRemixSection() },
+      { id: "shortcuts", label: "SHORTCUTS", builder: () => this.createShortcutsSection() },
       { id: "label", label: "LABELS", builder: () => this.createLabelsSection() },
       { id: "selector", label: "SELECTOR", builder: () => this.createSelectorSection() },
       { id: "search", label: "SEARCH & DATA", builder: () => this.createSearchSection() },
@@ -1326,6 +1345,40 @@ class UiController {
     this.refreshRemixSlotDisplays();
     this.updateRemixSearchSuggestions();
     return remixSection;
+  }
+
+  createShortcutsSection() {
+    const wrapper = document.createElement("div");
+    wrapper.className = "filter-section filter-shortcuts";
+    wrapper.appendChild(this.createSectionTitle("SHORTCUTS"));
+
+    const list = document.createElement("div");
+    list.className = "filter-shortcuts__list";
+
+    FILTER_SHORTCUT_SLOTS.forEach(({ key, label }) => {
+      const row = document.createElement("div");
+      row.className = "filter-shortcuts__row";
+
+      const rowLabel = document.createElement("span");
+      rowLabel.className = "filter-shortcuts__label";
+      rowLabel.textContent = label;
+
+      const select = document.createElement("select");
+      select.className = "filter-shortcuts__select";
+      select.dataset.shortcut = key;
+      select.addEventListener("change", () => {
+        this.uiState.shortcutAssignments[key] = select.value || "__none__";
+      });
+
+      this.dom.shortcutSelects[key] = select;
+      row.appendChild(rowLabel);
+      row.appendChild(select);
+      list.appendChild(row);
+    });
+
+    wrapper.appendChild(list);
+    this.updateShortcutPresetOptions();
+    return wrapper;
   }
 
   createInfoSection() {
@@ -3551,6 +3604,32 @@ class UiController {
       this.uiState.activeFilterPreset = "__none__";
     }
     this.setActiveFilterPreset(this.uiState.activeFilterPreset, { silent: true });
+    this.updateShortcutPresetOptions();
+  }
+
+
+  updateShortcutPresetOptions() {
+    const presetNames = this.uiState.filterPresets.map((preset) => preset.name);
+    FILTER_SHORTCUT_SLOTS.forEach(({ key }) => {
+      const select = this.dom.shortcutSelects?.[key];
+      if (!select) return;
+      select.innerHTML = "";
+      const noneOption = document.createElement("option");
+      noneOption.value = "__none__";
+      noneOption.textContent = "brak przypisania";
+      select.appendChild(noneOption);
+
+      presetNames.forEach((name) => {
+        const option = document.createElement("option");
+        option.value = name;
+        option.textContent = name;
+        select.appendChild(option);
+      });
+
+      const assigned = this.uiState.shortcutAssignments[key] || "__none__";
+      select.value = presetNames.includes(assigned) ? assigned : "__none__";
+      this.uiState.shortcutAssignments[key] = select.value;
+    });
   }
 
   setActiveFilterPreset(name, { silent = false } = {}) {
@@ -3574,6 +3653,55 @@ class UiController {
     if (!silent) {
       this.updateFilterTabIndicators();
     }
+  }
+
+  readStoredShortcuts() {
+    const fallback = Object.fromEntries(FILTER_SHORTCUT_SLOTS.map(({ key }) => [key, "__none__"]));
+    try {
+      const raw = localStorage.getItem("qobuzFilterShortcuts");
+      if (!raw) return fallback;
+      const parsed = JSON.parse(raw);
+      if (!parsed || typeof parsed !== "object") return fallback;
+      FILTER_SHORTCUT_SLOTS.forEach(({ key }) => {
+        fallback[key] = typeof parsed[key] === "string" ? parsed[key] : "__none__";
+      });
+      return fallback;
+    } catch (error) {
+      console.warn("Nie udało się odczytać skrótów filtrów:", error);
+      return fallback;
+    }
+  }
+
+  persistShortcuts() {
+    const payload = Object.fromEntries(
+      FILTER_SHORTCUT_SLOTS.map(({ key }) => [key, this.uiState.shortcutAssignments[key] || "__none__"])
+    );
+    try {
+      localStorage.setItem("qobuzFilterShortcuts", JSON.stringify(payload));
+    } catch (error) {
+      console.warn("Nie udało się zapisać skrótów filtrów:", error);
+    }
+  }
+
+  getShortcutKeyFromKeyboardEvent(event) {
+    if (event.shiftKey || event.altKey) return null;
+    if (!/^[0-9]$/.test(event.key)) return null;
+    if (event.metaKey && event.ctrlKey) return null;
+    if (event.metaKey) return `command_${event.key}`;
+    if (event.ctrlKey) return `control_${event.key}`;
+    return null;
+  }
+
+  handleFilterShortcutKeydown(event) {
+    const shortcutKey = this.getShortcutKeyFromKeyboardEvent(event);
+    if (!shortcutKey) return;
+    const presetName = this.uiState.shortcutAssignments[shortcutKey];
+    if (!presetName || presetName === "__none__") return;
+    const preset = this.uiState.filterPresets.find((item) => item.name === presetName);
+    if (!preset) return;
+    event.preventDefault();
+    this.setActiveFilterPreset(preset.name, { silent: true });
+    this.applyFilterPreset(preset);
   }
 
   readStoredFilterPreset() {
@@ -5561,7 +5689,8 @@ class UiController {
     this.uiState.remixLocked = remixLocked;
     this.refreshRemixSlotDisplays();
     this.updateRemixPageButtons();
-    this.setRemixEnabled(payload.remixEnabled === true, { silent: true, skipRender: true });
+    const remixFromPresetName = typeof preset?.name === "string" && preset.name.startsWith("RMX:");
+    this.setRemixEnabled(remixFromPresetName, { silent: true, skipRender: true });
     this.updateRemixSearchSuggestions();
 
     const refreshMode = payload.foldersRefreshMode === "MANUAL" ? "MANUAL" : "AUTO";
@@ -5578,8 +5707,11 @@ class UiController {
     if (this.dom.containerSelect) {
       this.dom.containerSelect.value = payload.containerFilter || "__all__";
     }
+    this.rebuildFolderSelect();
     if (this.dom.folderSelect) {
-      this.dom.folderSelect.value = payload.folderFilter || "__all__";
+      const desiredFolder = payload.folderFilter || "__all__";
+      const folderExists = Array.from(this.dom.folderSelect.options).some((option) => option.value === desiredFolder);
+      this.dom.folderSelect.value = folderExists ? desiredFolder : "__all__";
     }
 
     this.setActiveFilterPreset(preset.name, { silent: true });
@@ -7312,6 +7444,7 @@ class UiController {
       this.persistStoredSelections();
       this.persistActiveFilterPreset();
       this.persistRemixState();
+      this.persistShortcuts();
       this.persistRatingState();
       this.flashFileUpdated();
       return true;
