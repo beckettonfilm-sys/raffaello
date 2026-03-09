@@ -1293,13 +1293,19 @@ body::-webkit-scrollbar {
 }
 
 .filter-time__sort {
-  display: flex;
-  flex-direction: column;
+  display: block;
+}
+
+.filter-time__sort-line {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 8px;
 }
 
-.filter-time__sort-row {
-  flex-wrap: nowrap;
+.filter-time__sort-line .filter-chip {
+  justify-content: center;
+  text-align: center;
+  min-width: 0;
 }
 
 .filter-actions {
@@ -1412,6 +1418,10 @@ body::-webkit-scrollbar {
   grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
   gap: 12px;
   margin-bottom: 12px;
+}
+
+.data-mode-grid--paths {
+  grid-template-columns: 1fr;
 }
 
 .data-mode-title {

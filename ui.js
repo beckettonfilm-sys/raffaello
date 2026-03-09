@@ -965,65 +965,14 @@ class UiController {
     remixToggleWrap.appendChild(remixToggleLabel);
     remixToggleWrap.appendChild(remixSwitch.wrapper);
 
-    const autoFilterWrap = document.createElement("div");
-    autoFilterWrap.className = "filter-header-toggle";
-    const autoFilterLabel = document.createElement("span");
-    autoFilterLabel.className = "filter-header-toggle__label";
-    autoFilterLabel.textContent = "AUTO FOLDER SAVE SETTINGS";
-    const autoFilterSwitch = this.createSwitch({
-      id: "autoFilterFolderToggle",
-      leftLabel: "OFF",
-      rightLabel: "ON",
-      defaultRight: this.uiState.autoFilterFolder,
-      compact: true
-    });
-    this.dom.autoFilterFolderInput = autoFilterSwitch.input;
-    this.dom.autoFilterFolderLabels = {
-      left: autoFilterSwitch.leftLabel,
-      right: autoFilterSwitch.rightLabel
-    };
-    this.updateSwitchLabels(
-      autoFilterSwitch.input,
-      autoFilterSwitch.leftLabel,
-      autoFilterSwitch.rightLabel
-    );
-    autoFilterSwitch.input.addEventListener("change", () => {
-      this.uiState.autoFilterFolder = autoFilterSwitch.input.checked;
-      this.updateSwitchLabels(
-        autoFilterSwitch.input,
-        autoFilterSwitch.leftLabel,
-        autoFilterSwitch.rightLabel
-      );
-    });
-    autoFilterWrap.appendChild(autoFilterLabel);
-    autoFilterWrap.appendChild(autoFilterSwitch.wrapper);
-
     togglesWrap.appendChild(remixToggleWrap);
-    togglesWrap.appendChild(autoFilterWrap);
 
     const ratingWrap = document.createElement("div");
     ratingWrap.className = "filter-header-toggle";
     const ratingLabel = document.createElement("span");
     ratingLabel.className = "filter-header-toggle__label";
     ratingLabel.textContent = "RATING";
-    const ratingSwitch = this.createSwitch({
-      id: "ratingToggle",
-      leftLabel: "OFF",
-      rightLabel: "ON",
-      defaultRight: this.uiState.showRatings,
-      compact: true
-    });
-    this.dom.ratingToggleInput = ratingSwitch.input;
-    this.dom.ratingToggleLabels = {
-      left: ratingSwitch.leftLabel,
-      right: ratingSwitch.rightLabel
-    };
-    this.updateSwitchLabels(ratingSwitch.input, ratingSwitch.leftLabel, ratingSwitch.rightLabel);
-    ratingSwitch.input.addEventListener("change", () => {
-      this.setRatingVisibility(ratingSwitch.input.checked);
-    });
     ratingWrap.appendChild(ratingLabel);
-    ratingWrap.appendChild(ratingSwitch.wrapper);
 
     togglesWrap.appendChild(ratingWrap);
 
@@ -1678,6 +1627,65 @@ class UiController {
     favoriteCornerRow.appendChild(favoriteCornerSwitch.wrapper);
     dataSection.appendChild(favoriteCornerRow);
 
+    const autoFilterRow = document.createElement("div");
+    autoFilterRow.className = "filter-toggle-row";
+    const autoFilterLabel = document.createElement("div");
+    autoFilterLabel.className = "filter-toggle-title";
+    autoFilterLabel.textContent = "AUTO FOLDER SAVE SETTINGS";
+    const autoFilterSwitch = this.createSwitch({
+      id: "autoFilterFolderToggle",
+      leftLabel: "OFF",
+      rightLabel: "ON",
+      defaultRight: this.uiState.autoFilterFolder,
+      compact: true
+    });
+    this.dom.autoFilterFolderInput = autoFilterSwitch.input;
+    this.dom.autoFilterFolderLabels = {
+      left: autoFilterSwitch.leftLabel,
+      right: autoFilterSwitch.rightLabel
+    };
+    this.updateSwitchLabels(
+      autoFilterSwitch.input,
+      autoFilterSwitch.leftLabel,
+      autoFilterSwitch.rightLabel
+    );
+    autoFilterSwitch.input.addEventListener("change", () => {
+      this.uiState.autoFilterFolder = autoFilterSwitch.input.checked;
+      this.updateSwitchLabels(
+        autoFilterSwitch.input,
+        autoFilterSwitch.leftLabel,
+        autoFilterSwitch.rightLabel
+      );
+    });
+    autoFilterRow.appendChild(autoFilterLabel);
+    autoFilterRow.appendChild(autoFilterSwitch.wrapper);
+    dataSection.appendChild(autoFilterRow);
+
+    const ratingRow = document.createElement("div");
+    ratingRow.className = "filter-toggle-row";
+    const ratingRowLabel = document.createElement("div");
+    ratingRowLabel.className = "filter-toggle-title";
+    ratingRowLabel.textContent = "RATING";
+    const ratingSwitch = this.createSwitch({
+      id: "ratingToggle",
+      leftLabel: "OFF",
+      rightLabel: "ON",
+      defaultRight: this.uiState.showRatings,
+      compact: true
+    });
+    this.dom.ratingToggleInput = ratingSwitch.input;
+    this.dom.ratingToggleLabels = {
+      left: ratingSwitch.leftLabel,
+      right: ratingSwitch.rightLabel
+    };
+    this.updateSwitchLabels(ratingSwitch.input, ratingSwitch.leftLabel, ratingSwitch.rightLabel);
+    ratingSwitch.input.addEventListener("change", () => {
+      this.setRatingVisibility(ratingSwitch.input.checked);
+    });
+    ratingRow.appendChild(ratingRowLabel);
+    ratingRow.appendChild(ratingSwitch.wrapper);
+    dataSection.appendChild(ratingRow);
+
     const cdBackGlobalRow = document.createElement("div");
     cdBackGlobalRow.className = "filter-toggle-row";
     const cdBackGlobalLabel = document.createElement("div");
@@ -2188,7 +2196,7 @@ class UiController {
     wrapper.className = "filter-section";
 
     const dataModeGrid = document.createElement("div");
-    dataModeGrid.className = "data-mode-grid";
+    dataModeGrid.className = "data-mode-grid data-mode-grid--paths";
     const switchConfigs = [
       { key: "importDb", label: "IMPORT DB" },
       { key: "importJson", label: "IMPORT JSON" },
@@ -2415,19 +2423,19 @@ class UiController {
     };
 
     const ascChip = buildSortChip({
-      label: "SORTUJ OD NAJKRÓTSZYCH ALBUMÓW",
+      label: "OD NAJKRÓTSZYCH ALBUMÓW",
       mode: "duration_asc"
     });
     const descChip = buildSortChip({
-      label: "SORTUJ OD NAJDŁUŻSZYCH ALBUMÓW",
+      label: "OD NAJDŁUŻSZYCH ALBUMÓW",
       mode: "duration_desc"
     });
     const releaseDescChip = buildSortChip({
-      label: "SORTUJ OD NAJNOWSZYCH ALBUMÓW",
+      label: "OD NAJNOWSZYCH ALBUMÓW",
       mode: "release_desc"
     });
     const releaseAscChip = buildSortChip({
-      label: "SORTUJ OD NAJSTARSZYCH ALBUMÓW",
+      label: "OD NAJSTARSZYCH ALBUMÓW",
       mode: "release_asc"
     });
 
@@ -2436,18 +2444,14 @@ class UiController {
     this.dom.sortReleaseDescBtn = releaseDescChip.checkbox;
     this.dom.sortReleaseAscBtn = releaseAscChip.checkbox;
 
-    const releaseRow = document.createElement("div");
-    releaseRow.className = "filter-grid filter-time__sort-row";
-    releaseRow.appendChild(releaseDescChip.chip);
-    releaseRow.appendChild(releaseAscChip.chip);
+    const sortLine = document.createElement("div");
+    sortLine.className = "filter-grid filter-time__sort-line";
+    sortLine.appendChild(releaseDescChip.chip);
+    sortLine.appendChild(releaseAscChip.chip);
+    sortLine.appendChild(ascChip.chip);
+    sortLine.appendChild(descChip.chip);
 
-    const durationRow = document.createElement("div");
-    durationRow.className = "filter-grid filter-time__sort-row";
-    durationRow.appendChild(ascChip.chip);
-    durationRow.appendChild(descChip.chip);
-
-    sortButtons.appendChild(releaseRow);
-    sortButtons.appendChild(durationRow);
+    sortButtons.appendChild(sortLine);
     
     const timeActions = this.createActionsRow([
       {
