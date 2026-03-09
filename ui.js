@@ -690,6 +690,7 @@ class UiController {
 
     document.addEventListener("keydown", (event) => {
       if (shouldIgnoreKeyEvent(event)) return;
+      if (event.metaKey || event.ctrlKey || event.altKey || event.shiftKey) return;
       if (!/^[1-5]$/.test(event.key)) return;
       this.uiState.ratingKey = Number(event.key);
     });
@@ -739,6 +740,15 @@ class UiController {
       }
     });
 
+    window.addEventListener("blur", () => {
+      this.resetTransientKeyStates();
+    });
+
+    document.addEventListener("visibilitychange", () => {
+      if (!document.hidden) return;
+      this.resetTransientKeyStates();
+    });
+
     document.addEventListener("keydown", (event) => {
       if (event.key.toLowerCase() !== "i") return;
       if (this.uiState.showAlbumId) return;
@@ -757,6 +767,13 @@ class UiController {
         this.handleAppCloseRequest();
       });
     }
+  }
+
+  resetTransientKeyStates() {
+    this.uiState.ratingKey = null;
+    Object.keys(this.uiState.keyModifiers).forEach((key) => {
+      this.uiState.keyModifiers[key] = false;
+    });
   }
 
   toggleFilterPanel() {
