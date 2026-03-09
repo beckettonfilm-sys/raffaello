@@ -291,7 +291,8 @@ class UiController {
       ratingKey: null,
       formatOptions: [],
       formatLookup: { byCode: new Map(), byLabel: new Map() },
-      shortcutAssignments: createDefaultShortcutAssignments()
+      shortcutAssignments: createDefaultShortcutAssignments(),
+      lastStateBeforeShortcut: null
     };
     this.filterPresetPagesDirty = new Set();
     const storedRemix = this.readStoredRemixState();
@@ -3789,7 +3790,56 @@ class UiController {
     return null;
   }
 
+  isReturnFromShortcutEvent(event) {
+    if (event.shiftKey || event.altKey) return false;
+    if (!(event.metaKey || event.ctrlKey)) return false;
+    const key = String(event.key || "");
+    if (!key) return false;
+    const normalized = key.toLowerCase();
+    return normalized === "§" || normalized === "`";
+  }
+
+  captureStateForShortcutReturn() {
+    return {
+      payload: this.serializeCurrentFilters(),
+      activeFilterPreset: this.uiState.activeFilterPreset || "__none__",
+      activeCollection: this.uiState.activeCollection || "__all__",
+      currentCategory: this.uiState.currentCategory || "DB"
+    };
+  }
+
+  restoreStateBeforeShortcut() {
+    const snapshot = this.uiState.lastStateBeforeShortcut;
+    if (!snapshot || typeof snapshot !== "object") return;
+
+    const category = snapshot.currentCategory || "DB";
+    if (this.uiState.currentCategory !== category) {
+      this.uiState.currentCategory = category;
+      document.body.classList.remove(...Object.values(CATEGORY_CLASSES));
+      const className = this.store.getCategoryClass(category);
+      if (className) document.body.classList.add(className);
+      this.updateNavActive(category);
+    }
+
+    const collection = snapshot.activeCollection || "__all__";
+    this.uiState.activeCollection = collection;
+    this.rebuildCollectionSelect();
+
+    const payload = this.normalizeFilterPresetPayload(snapshot.payload || {});
+    this.applyFilterPreset({
+      name: snapshot.activeFilterPreset || "__none__",
+      payload
+    });
+  }
+
   handleFilterShortcutKeydown(event) {
+    if (this.isReturnFromShortcutEvent(event)) {
+      if (!this.uiState.lastStateBeforeShortcut) return;
+      event.preventDefault();
+      this.restoreStateBeforeShortcut();
+      return;
+    }
+
     const shortcutKey = this.getShortcutKeyFromKeyboardEvent(event);
     if (!shortcutKey) return;
     const presetName = this.uiState.shortcutAssignments[shortcutKey];
@@ -3797,6 +3847,7 @@ class UiController {
     const preset = this.uiState.filterPresets.find((item) => item.name === presetName);
     if (!preset) return;
     event.preventDefault();
+    this.uiState.lastStateBeforeShortcut = this.captureStateForShortcutReturn();
     this.syncActivePresetPageInMemory();
     this.setActiveFilterPreset(preset.name, { silent: true });
     this.applyFilterPreset(preset);
