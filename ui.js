@@ -170,16 +170,16 @@ const INFO_SHORTCUTS = [
       { title: "EXPORT DB", text: "eksportuje dane do XLSX — działa w OPERATIONS." },
       { title: "IMPORT JSON", text: "importuje albumy z JSON — działa w OPERATIONS." },
       { title: "SAVE XLSX / SAVE TXT", text: "zapisuje przefiltrowane wyniki i linki do plików — działa w głównym pasku akcji." },
-      { title: "BACKUP DB", text: "tworzy kopię bezpieczeństwa bazy — działa w panelu OPTIONS." },
-      { title: "SPRAWDŹ DANE", text: "uruchamia kontrolę spójności danych i tworzy kontener ERROR przy brakach — działa w panelu OPTIONS." }
+      { title: "BACKUP DB", text: "tworzy kopię bezpieczeństwa bazy — działa w panelu SETTINGS." },
+      { title: "SPRAWDŹ DANE", text: "uruchamia kontrolę spójności danych i tworzy kontener ERROR przy brakach — działa w panelu SETTINGS." }
     ]
   },
   {
     section: "Operacje na strukturze i ścieżkach",
     items: [
-      { title: "ADD / EDIT / DELETE (OPERACJE NA)", text: "zarządza FOLDERS, CONTAINERS i COLLECTIONS — działa w OPTIONS > OPERATIONS." },
-      { title: "AUTO / MANUAL (PATHS)", text: "przełącza tryb wyboru katalogu dla importu/eksportu/aktualizacji — działa w OPTIONS > PATHS." },
-      { title: "Wybierz folder / plik", text: "ustawia ścieżkę ręcznie i zapisuje konfigurację operacji — działa w OPTIONS > PATHS." }
+      { title: "ADD / EDIT / DELETE (OPERACJE NA)", text: "zarządza FOLDERS, CONTAINERS i COLLECTIONS — działa w SETTINGS > OPERATIONS." },
+      { title: "AUTO / MANUAL (PATHS)", text: "przełącza tryb wyboru katalogu dla importu/eksportu/aktualizacji — działa w SETTINGS > PATHS." },
+      { title: "Wybierz folder / plik", text: "ustawia ścieżkę ręcznie i zapisuje konfigurację operacji — działa w SETTINGS > PATHS." }
     ]
   },
   {
@@ -260,7 +260,6 @@ class UiController {
       lastSkipFolderFiltering: false,
       showAlbumId: false,
       activeCollection: "__all__",
-      activeOptionsTab: "operations",
       operationsScope: "folders",
       showFavorites: true,
       showComingSoon: false,
@@ -314,7 +313,6 @@ class UiController {
     await this.loadShortcutAssignments();
     this.buildFilterPanel();
     this.setRatingVisibility(this.uiState.showRatings);
-    this.buildOptionsPanel();
     this.updateAllDataDirectoryHints();
     this.bootstrapDataPaths();
     this.loadFilterPresets();
@@ -414,9 +412,7 @@ class UiController {
       filterBtn: document.getElementById("filterBtn"),
       filterBtnDot: document.querySelector("#filterBtn .menu-chip__dot"),
       filterClearBtn: document.getElementById("filterClearBtn"),
-      optionsBtn: document.getElementById("optionsBtn"),
       filterPanel: document.getElementById("filter-panel"),
-      optionsPanel: document.getElementById("options-panel"),
       collectionSelect: document.getElementById("collectionSelect"),
       addEntityBtn: document.getElementById("addEntityBtn"),
       editEntityBtn: document.getElementById("editEntityBtn"),
@@ -504,9 +500,7 @@ class UiController {
       containerSelect,
       filterBtn,
       filterClearBtn,
-      optionsBtn,
       filterPanel,
-      optionsPanel,
       collectionSelect,
       addEntityBtn,
       editEntityBtn,
@@ -554,7 +548,6 @@ class UiController {
 
     filterBtn?.addEventListener("click", () => this.toggleFilterPanel());
     filterClearBtn?.addEventListener("click", () => this.clearAllFilters());
-    optionsBtn?.addEventListener("click", () => this.toggleOptionsPanel());
 
     collectionSelect?.addEventListener("change", () => {
       this.handleCollectionChange(collectionSelect.value);
@@ -874,7 +867,7 @@ class UiController {
 
   const tabsBar = this.dom.filterTabsBar;
 
-  // W panelu FILTR mamy CSS grid (5 kolumn), więc NIE ustawiamy szerokości na sztywno,
+  // W panelu SETTINGS mamy CSS grid (7 kolumn), więc NIE ustawiamy szerokości na sztywno,
   // bo to wypycha elementy poza panel i potem overflow:hidden je ucina.
   if (tabsBar?.classList?.contains("filter-tabs--filters")) {
     [...buttons, ...(this.dom.filterTabControls || [])].forEach((el) => {
@@ -904,30 +897,6 @@ class UiController {
   }
 }
 
-  toggleOptionsPanel() {
-    const { optionsPanel } = this.dom;
-    if (!optionsPanel) return;
-    if (optionsPanel.style.display === "block") return;
-    optionsPanel.style.display = "block";
-  }
-
-  hideOptionsPanel() {
-    const { optionsPanel } = this.dom;
-    if (optionsPanel) optionsPanel.style.display = "none";
-  }
-
-  activateOptionsTab(tabId) {
-    const { optionsTabSections, optionsTabsBar } = this.dom;
-    if (!optionsTabSections) return;
-    const target = optionsTabSections.has(tabId) ? tabId : "operations";
-    this.uiState.activeOptionsTab = target;
-    optionsTabSections.forEach((section, key) => {
-      section.hidden = key !== target;
-    });
-    optionsTabsBar?.querySelectorAll(".filter-tab__btn").forEach((btn) => {
-      btn.classList.toggle("active", btn.dataset.tab === target);
-    });
-  }
 
   flashOptionButton(button) {
     if (!button) return;
@@ -1000,7 +969,7 @@ class UiController {
     autoFilterWrap.className = "filter-header-toggle";
     const autoFilterLabel = document.createElement("span");
     autoFilterLabel.className = "filter-header-toggle__label";
-    autoFilterLabel.textContent = "AUTO FOLDER SAVE FILTR";
+    autoFilterLabel.textContent = "AUTO FOLDER SAVE SETTINGS";
     const autoFilterSwitch = this.createSwitch({
       id: "autoFilterFolderToggle",
       leftLabel: "OFF",
@@ -1058,14 +1027,34 @@ class UiController {
 
     togglesWrap.appendChild(ratingWrap);
 
+    const infoBtn = document.createElement("button");
+    infoBtn.type = "button";
+    infoBtn.className = "filter-info-btn";
+    infoBtn.textContent = "i";
+    infoBtn.setAttribute("aria-label", "Pokaż informacje i skróty");
+    infoBtn.addEventListener("click", () => this.openInfoOverlay(infoBtn));
+    ratingWrap.appendChild(infoBtn);
+
     const closeBtn = document.createElement("button");
     closeBtn.className = "filter-panel__close";
-    closeBtn.setAttribute("aria-label", "Zamknij panel filtrów");
+    closeBtn.setAttribute("aria-label", "Zamknij panel ustawień");
     closeBtn.textContent = "×";
     closeBtn.addEventListener("click", () => this.hideFilterPanel());
 
     const actions = document.createElement("div");
     actions.className = "filter-panel__actions";
+    const backupBtn = document.createElement("button");
+    backupBtn.type = "button";
+    backupBtn.className = "filter-backup-btn";
+    backupBtn.textContent = "BACKUP DB";
+    backupBtn.addEventListener("click", () => this.handleDatabaseBackup());
+    const checkBtn = document.createElement("button");
+    checkBtn.type = "button";
+    checkBtn.className = "filter-backup-btn";
+    checkBtn.textContent = "SPRAWDŹ DANE";
+    checkBtn.addEventListener("click", () => this.handleDatabaseCheck());
+    actions.appendChild(backupBtn);
+    actions.appendChild(checkBtn);
     actions.appendChild(closeBtn);
 
     header.appendChild(togglesWrap);
@@ -1085,7 +1074,9 @@ class UiController {
       { id: "search", label: "SEARCH", builder: () => this.createSearchOnlySection() },
       { id: "data", label: "DATA", builder: () => this.createDataSection() },
       { id: "time", label: "TIME", builder: () => this.createTimeSection() },
-      { id: "shortcuts", label: "SHORTCUTS", builder: () => this.createShortcutsSection() }
+      { id: "operations", label: "OPERATIONS", builder: () => this.createOperationsSection() },
+      { id: "shortcuts", label: "SHORTCUTS", builder: () => this.createShortcutsSection() },
+      { id: "paths", label: "PATHS", builder: () => this.createPathsSection() }
     ];
 
     const presetsRow = document.createElement("div");
@@ -1093,7 +1084,7 @@ class UiController {
     const presetSaveBtn = document.createElement("button");
     presetSaveBtn.type = "button";
     presetSaveBtn.className = "filter-presets__save";
-    presetSaveBtn.textContent = "SAVE FILTR";
+    presetSaveBtn.textContent = "SAVE SETTINGS";
     presetSaveBtn.addEventListener("click", () => this.handleSaveFilterPreset());
     const presetSelect = document.createElement("select");
     presetSelect.className = "filter-presets__select";
@@ -1101,18 +1092,18 @@ class UiController {
     const presetEditBtn = document.createElement("button");
     presetEditBtn.type = "button";
     presetEditBtn.className = "filter-presets__edit";
-    presetEditBtn.textContent = "EDIT FILTR";
+    presetEditBtn.textContent = "EDIT SETTINGS";
     presetEditBtn.addEventListener("click", () => this.handlePresetRename());
     const presetDeleteBtn = document.createElement("button");
     presetDeleteBtn.type = "button";
     presetDeleteBtn.className = "filter-presets__delete";
-    presetDeleteBtn.textContent = "DELETE FILTR";
+    presetDeleteBtn.textContent = "DELETE SETTINGS";
     presetDeleteBtn.addEventListener("click", () => this.handlePresetDelete());
 
     const copyBtn = document.createElement("button");
     copyBtn.type = "button";
     copyBtn.className = "filter-presets__copy";
-    copyBtn.textContent = "COPY FILTR";
+    copyBtn.textContent = "COPY SETTINGS";
     copyBtn.addEventListener("click", () => this.handleCopyFilterPreset());
 
     const sections = new Map();
@@ -1189,81 +1180,6 @@ class UiController {
     requestAnimationFrame(() => this.syncFilterTabWidths());
   }
 
-  buildOptionsPanel() {
-    const { optionsPanel } = this.dom;
-    if (!optionsPanel) return;
-
-    optionsPanel.innerHTML = "";
-    this.dom.dataModeToggles = {};
-    this.dom.dataModeLabels = {};
-    this.dom.dataDirectoryHints = {};
-
-    const header = document.createElement("div");
-    header.className = "filter-panel__header";
-
-    const spacer = document.createElement("div");
-
-    const actions = document.createElement("div");
-    actions.className = "filter-panel__actions";
-    const backupBtn = document.createElement("button");
-    backupBtn.type = "button";
-    backupBtn.className = "filter-backup-btn";
-    backupBtn.textContent = "BACKUP DB";
-    backupBtn.addEventListener("click", () => this.handleDatabaseBackup());
-    const checkBtn = document.createElement("button");
-    checkBtn.type = "button";
-    checkBtn.className = "filter-backup-btn";
-    checkBtn.textContent = "SPRAWDŹ DANE";
-    checkBtn.addEventListener("click", () => this.handleDatabaseCheck());
-    const closeBtn = document.createElement("button");
-    closeBtn.className = "filter-panel__close";
-    closeBtn.setAttribute("aria-label", "Zamknij panel opcji");
-    closeBtn.textContent = "×";
-    closeBtn.addEventListener("click", () => this.hideOptionsPanel());
-    actions.appendChild(backupBtn);
-    actions.appendChild(checkBtn);
-    actions.appendChild(closeBtn);
-
-    header.appendChild(spacer);
-    header.appendChild(actions);
-
-    const tabsBar = document.createElement("div");
-    tabsBar.className = "filter-tabs";
-    const tabsContent = document.createElement("div");
-    tabsContent.className = "filter-tabs__content";
-    const sections = new Map();
-
-    const tabs = [
-      { id: "paths", label: "PATHS", builder: () => this.createPathsSection() },
-      { id: "operations", label: "OPERATIONS", builder: () => this.createOperationsSection() },
-      { id: "info", label: "INFO", builder: () => this.createInfoSection() }
-    ];
-
-    tabs.forEach((tab) => {
-      const btn = document.createElement("button");
-      btn.type = "button";
-      btn.className = "filter-tab__btn";
-      btn.dataset.tab = tab.id;
-      btn.textContent = tab.label;
-      btn.addEventListener("click", () => this.activateOptionsTab(tab.id));
-      tabsBar.appendChild(btn);
-
-      const section = tab.builder();
-      section.classList.add("filter-tab__panel");
-      section.hidden = true;
-      tabsContent.appendChild(section);
-      sections.set(tab.id, section);
-    });
-
-    this.dom.optionsTabSections = sections;
-    this.dom.optionsTabsBar = tabsBar;
-
-    optionsPanel.appendChild(header);
-    optionsPanel.appendChild(tabsBar);
-    optionsPanel.appendChild(tabsContent);
-
-    this.activateOptionsTab(this.uiState.activeOptionsTab);
-  }
 
   createRemixSection() {
     const remixSection = document.createElement("div");
@@ -1503,15 +1419,10 @@ class UiController {
     return wrapper;
   }
 
-  createInfoSection() {
-    const infoSection = document.createElement("div");
-    infoSection.className = "filter-section options-info-section";
-    const heading = this.createSectionTitle("INFO");
-    heading.classList.add("options-info-heading");
-    infoSection.appendChild(heading);
 
-    const scrollArea = document.createElement("div");
-    scrollArea.className = "options-info-scroll";
+  buildInfoOverlayContent() {
+    const wrapper = document.createElement("div");
+    wrapper.className = "settings-info-modal__content";
 
     const infoStack = document.createElement("div");
     infoStack.className = "options-info-stack";
@@ -1534,7 +1445,7 @@ class UiController {
     infoStack.appendChild(newCounter);
     infoStack.appendChild(originalCounter);
     infoStack.appendChild(copyCounter);
-    scrollArea.appendChild(infoStack);
+    wrapper.appendChild(infoStack);
 
     this.dom.newCounter = newCounter;
     this.dom.originalCounter = originalCounter;
@@ -1543,7 +1454,7 @@ class UiController {
     const infoTitle = document.createElement("div");
     infoTitle.className = "options-info-title";
     infoTitle.textContent = "Opcje i skróty";
-    scrollArea.appendChild(infoTitle);
+    wrapper.appendChild(infoTitle);
 
     const sectionsWrap = document.createElement("div");
     sectionsWrap.className = "options-info-sections";
@@ -1570,10 +1481,56 @@ class UiController {
       sectionsWrap.appendChild(sectionWrap);
     });
 
-    scrollArea.appendChild(sectionsWrap);
-    infoSection.appendChild(scrollArea);
+    wrapper.appendChild(sectionsWrap);
+    return wrapper;
+  }
 
-    return infoSection;
+  openInfoOverlay(triggerButton) {
+    if (this.dom.infoOverlay) return;
+    const overlay = document.createElement("div");
+    overlay.className = "settings-info-modal";
+    overlay.setAttribute("role", "dialog");
+    overlay.setAttribute("aria-modal", "true");
+    overlay.setAttribute("aria-label", "Informacje i skróty");
+
+    const panel = document.createElement("div");
+    panel.className = "settings-info-modal__panel";
+
+    const closeBtn = document.createElement("button");
+    closeBtn.type = "button";
+    closeBtn.className = "settings-info-modal__close";
+    closeBtn.setAttribute("aria-label", "Zamknij informacje");
+    closeBtn.textContent = "×";
+
+    const content = this.buildInfoOverlayContent();
+
+    panel.appendChild(closeBtn);
+    panel.appendChild(content);
+    overlay.appendChild(panel);
+    document.body.appendChild(overlay);
+
+    const close = () => {
+      if (!this.dom.infoOverlay) return;
+      this.dom.infoOverlay.remove();
+      this.dom.infoOverlay = null;
+      this.dom.infoOverlayCloseBtn = null;
+      if (triggerButton?.focus) triggerButton.focus();
+    };
+
+    overlay.addEventListener("click", (event) => {
+      if (event.target === overlay) close();
+    });
+    closeBtn.addEventListener("click", close);
+    overlay.addEventListener("keydown", (event) => {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        close();
+      }
+    });
+
+    this.dom.infoOverlay = overlay;
+    this.dom.infoOverlayCloseBtn = closeBtn;
+    closeBtn.focus();
   }
 
   createSearchOnlySection() {
