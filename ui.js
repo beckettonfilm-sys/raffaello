@@ -291,7 +291,9 @@ class UiController {
       ratingKey: null,
       formatOptions: [],
       formatLookup: { byCode: new Map(), byLabel: new Map() },
-      shortcutAssignments: createDefaultShortcutAssignments()
+      shortcutAssignments: createDefaultShortcutAssignments(),
+      shortcutModeActive: false,
+      lastManualStateBeforeShortcut: null
     };
     this.filterPresetPagesDirty = new Set();
     const storedRemix = this.readStoredRemixState();
@@ -682,11 +684,13 @@ class UiController {
 
     document.addEventListener("keydown", (event) => {
       if (shouldIgnoreKeyEvent(event)) return;
+      this.handleShortcutReturnKeydown(event);
       this.handleFilterShortcutKeydown(event);
     });
 
     document.addEventListener("keydown", (event) => {
       if (shouldIgnoreKeyEvent(event)) return;
+      if (event.metaKey || event.ctrlKey || event.altKey || event.shiftKey) return;
       if (!/^[1-5]$/.test(event.key)) return;
       this.uiState.ratingKey = Number(event.key);
     });
@@ -736,6 +740,15 @@ class UiController {
       }
     });
 
+    window.addEventListener("blur", () => {
+      this.resetTransientKeyStates();
+    });
+
+    document.addEventListener("visibilitychange", () => {
+      if (!document.hidden) return;
+      this.resetTransientKeyStates();
+    });
+
     document.addEventListener("keydown", (event) => {
       if (event.key.toLowerCase() !== "i") return;
       if (this.uiState.showAlbumId) return;
@@ -754,6 +767,13 @@ class UiController {
         this.handleAppCloseRequest();
       });
     }
+  }
+
+  resetTransientKeyStates() {
+    this.uiState.ratingKey = null;
+    Object.keys(this.uiState.keyModifiers).forEach((key) => {
+      this.uiState.keyModifiers[key] = false;
+    });
   }
 
   toggleFilterPanel() {
@@ -3789,6 +3809,32 @@ class UiController {
     return null;
   }
 
+  isShortcutReturnKeyboardEvent(event) {
+    if (event.shiftKey || event.altKey) return false;
+    if (event.metaKey && event.ctrlKey) return false;
+    if (!event.metaKey && !event.ctrlKey) return false;
+    return event.code === "Backquote" || event.key === "§";
+  }
+
+  applyManualStateAfterShortcut(state) {
+    const payload = this.normalizeFilterPresetPayload(state);
+    this.applyFilterPreset({ name: "__none__", payload });
+    if (payload.remixEnabled === true) {
+      this.setRemixEnabled(true, { silent: true });
+    }
+    this.setActiveFilterPreset("__none__", { silent: true });
+  }
+
+  handleShortcutReturnKeydown(event) {
+    if (!this.isShortcutReturnKeyboardEvent(event)) return;
+    const snapshot = this.uiState.lastManualStateBeforeShortcut;
+    if (!snapshot) return;
+    event.preventDefault();
+    this.applyManualStateAfterShortcut(snapshot);
+    this.uiState.shortcutModeActive = false;
+    this.uiState.lastManualStateBeforeShortcut = null;
+  }
+
   handleFilterShortcutKeydown(event) {
     const shortcutKey = this.getShortcutKeyFromKeyboardEvent(event);
     if (!shortcutKey) return;
@@ -3797,6 +3843,10 @@ class UiController {
     const preset = this.uiState.filterPresets.find((item) => item.name === presetName);
     if (!preset) return;
     event.preventDefault();
+    if (!this.uiState.shortcutModeActive) {
+      this.uiState.lastManualStateBeforeShortcut = this.serializeCurrentFilters();
+      this.uiState.shortcutModeActive = true;
+    }
     this.syncActivePresetPageInMemory();
     this.setActiveFilterPreset(preset.name, { silent: true });
     this.applyFilterPreset(preset);
