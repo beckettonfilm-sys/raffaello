@@ -1797,6 +1797,10 @@ body.app-inactive .album-card:hover {
   border-width: 3px;
 }
 
+body.app-inactive .album-cover-wrap:hover .album-cover.grayscale {
+  filter: grayscale(100%);
+}
+
 .album-cover {
   width: 100%;
   display: block;

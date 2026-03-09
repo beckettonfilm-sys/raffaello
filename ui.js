@@ -792,8 +792,19 @@ class UiController {
   }
 
   resetAlbumCardHoverState() {
-    document.querySelectorAll(".album-cover-wrap.is-hovered").forEach((coverWrap) => {
-      coverWrap.dispatchEvent(new Event("mouseleave"));
+    document.querySelectorAll(".album-cover-wrap").forEach((coverWrap) => {
+      if (typeof coverWrap.__resetCoverState === "function") {
+        coverWrap.__resetCoverState();
+        return;
+      }
+      coverWrap.classList.remove("is-hovered");
+      const cover = coverWrap.querySelector(".album-cover");
+      if (cover?.dataset?.miniSrc) {
+        cover.src = cover.dataset.miniSrc;
+      }
+      if (cover?.dataset?.selector === "X") {
+        cover.classList.add("grayscale");
+      }
     });
   }
 
@@ -6752,6 +6763,8 @@ class UiController {
     const { preferred: cdBackSrc, template: cdBackTemplate, usesBack: cdBackUsesBack } = this.getCdBackImageSources(album);
     const applyMiniCover = () => {
       img.dataset.imageMode = "mini";
+      img.dataset.miniSrc = coverSrc;
+      img.dataset.selector = String(album.selector || "");
       img.dataset.fallbackApplied = "";
       img.onerror = () => {
         if (img.dataset.fallbackApplied) return;
@@ -6778,6 +6791,17 @@ class UiController {
     const coverWrap = document.createElement("div");
     coverWrap.className = "album-cover-wrap";
     coverWrap.appendChild(img);
+
+    const resetCoverState = () => {
+      coverWrap.classList.remove("is-hovered");
+      applyMiniCover();
+      if (album.selector === "X") {
+        img.classList.add("grayscale");
+      } else {
+        img.classList.remove("grayscale");
+      }
+    };
+    coverWrap.__resetCoverState = resetCoverState;
 
     const ratingValue = Number(album.rating) || 0;
     if (ratingValue > 0) {
@@ -6920,9 +6944,7 @@ class UiController {
       if (album.selector === "X") img.classList.remove("grayscale");
     });
     coverWrap.addEventListener("mouseleave", () => {
-      coverWrap.classList.remove("is-hovered");
-      applyMiniCover();
-      if (album.selector === "X") img.classList.add("grayscale");
+      resetCoverState();
     });
 
     this.applySelectorColorToCard(card, album.selector);
@@ -7233,6 +7255,7 @@ class UiController {
 
       this.applyReviewSelectorOnContext(album, img, card);
       if (tidalProtocolLink) {
+        resetCoverState();
         const opened = await this.openExternalLink(tidalProtocolLink, { requireOnline: true });
         if (opened && window.electronAPI?.maximizeTidalWindow) {
           setTimeout(() => {
