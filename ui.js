@@ -786,9 +786,41 @@ class UiController {
   }
 
   setAppInteractiveState(isActive) {
-    document.body.classList.toggle("app-inactive", !isActive);
-    if (isActive) return;
-    this.resetAlbumCardHoverState();
+    const body = document.body;
+    if (!body) return;
+    body.classList.toggle("app-inactive", !isActive);
+    if (!isActive) {
+      this.suspendAlbumHoverUntilPointerMove();
+      this.resetAlbumCardHoverState();
+      return;
+    }
+    this.waitForPointerMoveToRestoreAlbumHover();
+  }
+
+  suspendAlbumHoverUntilPointerMove() {
+    const body = document.body;
+    if (!body) return;
+    body.classList.add("hover-suspended");
+    if (!this._resumeHoverOnPointerMove) {
+      this._resumeHoverOnPointerMove = (event) => {
+        if (event.movementX === 0 && event.movementY === 0) return;
+        const activeBody = document.body;
+        if (!activeBody || activeBody.classList.contains("app-inactive")) return;
+        activeBody.classList.remove("hover-suspended");
+        window.removeEventListener("pointermove", this._resumeHoverOnPointerMove, true);
+        window.removeEventListener("mousemove", this._resumeHoverOnPointerMove, true);
+      };
+    }
+    window.removeEventListener("pointermove", this._resumeHoverOnPointerMove, true);
+    window.removeEventListener("mousemove", this._resumeHoverOnPointerMove, true);
+  }
+
+  waitForPointerMoveToRestoreAlbumHover() {
+    const body = document.body;
+    if (!body?.classList.contains("hover-suspended")) return;
+    if (!this._resumeHoverOnPointerMove) return;
+    window.addEventListener("pointermove", this._resumeHoverOnPointerMove, true);
+    window.addEventListener("mousemove", this._resumeHoverOnPointerMove, true);
   }
 
   resetAlbumCardHoverState() {
@@ -6938,6 +6970,10 @@ class UiController {
     });
 
     coverWrap.addEventListener("mouseenter", () => {
+      if (document.body?.classList.contains("hover-suspended") || document.body?.classList.contains("app-inactive")) {
+        resetCoverState();
+        return;
+      }
       coverWrap.classList.add("is-hovered");
       if (!this.uiState.cdBackGlobalEnabled) return;
       applyCdBackCover();
