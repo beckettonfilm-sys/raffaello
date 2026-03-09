@@ -742,11 +742,20 @@ class UiController {
 
     window.addEventListener("blur", () => {
       this.resetTransientKeyStates();
+      this.setAppInteractiveState(false);
+    });
+
+    window.addEventListener("focus", () => {
+      this.setAppInteractiveState(true);
     });
 
     document.addEventListener("visibilitychange", () => {
-      if (!document.hidden) return;
-      this.resetTransientKeyStates();
+      if (document.hidden) {
+        this.resetTransientKeyStates();
+        this.setAppInteractiveState(false);
+        return;
+      }
+      this.setAppInteractiveState(true);
     });
 
     document.addEventListener("keydown", (event) => {
@@ -773,6 +782,18 @@ class UiController {
     this.uiState.ratingKey = null;
     Object.keys(this.uiState.keyModifiers).forEach((key) => {
       this.uiState.keyModifiers[key] = false;
+    });
+  }
+
+  setAppInteractiveState(isActive) {
+    document.body.classList.toggle("app-inactive", !isActive);
+    if (isActive) return;
+    this.resetAlbumCardHoverState();
+  }
+
+  resetAlbumCardHoverState() {
+    document.querySelectorAll(".album-cover-wrap.is-hovered").forEach((coverWrap) => {
+      coverWrap.dispatchEvent(new Event("mouseleave"));
     });
   }
 
@@ -1016,12 +1037,12 @@ class UiController {
 
     const tabs = [
       { id: "remix", label: "REMIX", builder: () => this.createRemixSection() },
-      { id: "shortcuts", label: "SHORTCUTS", builder: () => this.createShortcutsSection() },
       { id: "label", label: "LABELS", builder: () => this.createLabelsSection() },
       { id: "selector", label: "SELECTOR", builder: () => this.createSelectorSection() },
       { id: "search", label: "SEARCH", builder: () => this.createSearchOnlySection() },
       { id: "data", label: "DATA", builder: () => this.createDataSection() },
-      { id: "time", label: "TIME", builder: () => this.createTimeSection() }
+      { id: "time", label: "TIME", builder: () => this.createTimeSection() },
+      { id: "shortcuts", label: "SHORTCUTS", builder: () => this.createShortcutsSection() }
     ];
 
     const presetsRow = document.createElement("div");
@@ -6893,11 +6914,13 @@ class UiController {
     });
 
     coverWrap.addEventListener("mouseenter", () => {
+      coverWrap.classList.add("is-hovered");
       if (!this.uiState.cdBackGlobalEnabled) return;
       applyCdBackCover();
       if (album.selector === "X") img.classList.remove("grayscale");
     });
     coverWrap.addEventListener("mouseleave", () => {
+      coverWrap.classList.remove("is-hovered");
       applyMiniCover();
       if (album.selector === "X") img.classList.add("grayscale");
     });
