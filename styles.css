@@ -797,6 +797,10 @@ body::-webkit-scrollbar {
   min-width: 0;
 }
 
+.filter-tabs--filters .filter-tab__btn[data-tab="time"] {
+  grid-column: 6;
+}
+
 .filter-tab__label {
   min-width: 0;
   overflow: hidden;
