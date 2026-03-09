@@ -2195,8 +2195,8 @@ class UiController {
     const wrapper = document.createElement("div");
     wrapper.className = "filter-section";
 
-    const dataModeGrid = document.createElement("div");
-    dataModeGrid.className = "data-mode-grid data-mode-grid--paths";
+    const pathsList = document.createElement("div");
+    pathsList.className = "paths-settings-list";
     const switchConfigs = [
       { key: "importDb", label: "IMPORT DB" },
       { key: "importJson", label: "IMPORT JSON" },
@@ -2207,10 +2207,13 @@ class UiController {
 
     switchConfigs.forEach(({ key, label }) => {
       const row = document.createElement("div");
-      row.className = "data-mode-row";
+      row.className = "paths-setting-row";
+
+      const mainLine = document.createElement("div");
+      mainLine.className = "paths-setting-row__main";
 
       const title = document.createElement("div");
-      title.className = "data-mode-title";
+      title.className = "paths-setting-title";
       title.textContent = label;
 
       const dataSwitch = this.createSwitch({
@@ -2226,16 +2229,17 @@ class UiController {
       this.updateSwitchLabels(dataSwitch.input, dataSwitch.leftLabel, dataSwitch.rightLabel);
 
       const hint = document.createElement("div");
-      hint.className = "data-mode-hint";
+      hint.className = "paths-setting-hint";
       this.dom.dataDirectoryHints[key] = hint;
 
-      row.appendChild(title);
-      row.appendChild(dataSwitch.wrapper);
+      mainLine.appendChild(title);
+      mainLine.appendChild(dataSwitch.wrapper);
+      row.appendChild(mainLine);
       row.appendChild(hint);
-      dataModeGrid.appendChild(row);
+      pathsList.appendChild(row);
     });
 
-    wrapper.appendChild(dataModeGrid);
+    wrapper.appendChild(pathsList);
 
     return wrapper;
   }
@@ -3084,7 +3088,7 @@ class UiController {
     hint.innerHTML = "";
 
     const currentRow = document.createElement("div");
-    currentRow.className = "data-mode-hint__row";
+    currentRow.className = "paths-setting-hint__row";
     const currentSpan = document.createElement("span");
     currentSpan.textContent = currentLabel;
     currentRow.appendChild(currentSpan);
