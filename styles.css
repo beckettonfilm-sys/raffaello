@@ -778,9 +778,24 @@ body::-webkit-scrollbar {
   display: grid;
   width: 100%;
   grid-template-columns: repeat(6, minmax(0, 1fr));
+  grid-template-rows: repeat(2, minmax(0, auto));
   gap: 8px;
   align-items: center;
 }
+
+.filter-tabs--filters .filter-tab__btn[data-tab="remix"] { grid-column: 1; grid-row: 1; }
+.filter-tabs--filters .filter-tab__btn[data-tab="label"] { grid-column: 2; grid-row: 1; }
+.filter-tabs--filters .filter-tab__btn[data-tab="selector"] { grid-column: 3; grid-row: 1; }
+.filter-tabs--filters .filter-tab__btn[data-tab="search"] { grid-column: 4; grid-row: 1; }
+.filter-tabs--filters .filter-tab__btn[data-tab="data"] { grid-column: 5; grid-row: 1; }
+.filter-tabs--filters .filter-tab__btn[data-tab="time"] { grid-column: 6; grid-row: 1; }
+.filter-tabs--filters .filter-tab__btn[data-tab="shortcuts"] { grid-column: 2; grid-row: 2; }
+
+.filter-tabs--filters .filter-presets__select { grid-column: 1; grid-row: 2; }
+.filter-tabs--filters .filter-presets__save { grid-column: 3; grid-row: 2; }
+.filter-tabs--filters .filter-presets__edit { grid-column: 4; grid-row: 2; }
+.filter-tabs--filters .filter-presets__delete { grid-column: 5; grid-row: 2; }
+.filter-tabs--filters .filter-presets__copy { grid-column: 6; grid-row: 2; }
 
 /* pozwala elementom się ściskać zamiast wyjeżdżać poza panel */
 .filter-tabs--filters > * {
@@ -1773,6 +1788,13 @@ main::-webkit-scrollbar {
   box-shadow: 0 6px 20px rgba(0, 0, 0, 0.25);
   border-color: var(--card-hover-color, rgba(200, 0, 0, 1));
   border-width: 4px;
+}
+
+body.app-inactive .album-card:hover {
+  transform: none;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1);
+  border-color: var(--card-border-color, rgba(200, 0, 0, 0.25));
+  border-width: 3px;
 }
 
 .album-cover {
