@@ -386,8 +386,7 @@ body::-webkit-scrollbar {
   min-width: 240px;
 }
 
-#filter-panel,
-#options-panel {
+#filter-panel {
   position: absolute;
   top: 90px;
   right: 20px;
@@ -397,8 +396,8 @@ body::-webkit-scrollbar {
   border-radius: 14px;
   box-shadow: 0 12px 40px rgba(0, 0, 0, 0.4);
   max-height: min(820px, calc(100vh - 150px));
-  max-width: 920px;
-  min-width: 680px;
+  max-width: 1120px;
+  min-width: 820px;
   display: none;
   z-index: 40;
   border: 1px solid rgba(255, 255, 255, 0.08);
@@ -409,11 +408,6 @@ body::-webkit-scrollbar {
   flex-direction: column;
 }
 
-#options-panel {
-  flex-direction: column;
-  overflow-y: auto;
-  overflow-x: hidden;
-}
 
 .modal-overlay {
   position: fixed;
@@ -699,6 +693,30 @@ body::-webkit-scrollbar {
   border-color: rgba(255, 152, 0, 0.3);
 }
 
+
+.filter-info-btn {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  background: rgba(255, 255, 255, 0.1);
+  color: #f5f5f5;
+  font-weight: 700;
+  cursor: pointer;
+  transition: transform 0.2s ease, background 0.2s ease, border-color 0.2s ease;
+}
+
+.filter-info-btn:hover,
+.filter-info-btn:focus-visible {
+  background: rgba(255, 152, 0, 0.24);
+  border-color: rgba(255, 152, 0, 0.5);
+  transform: translateY(-1px);
+  outline: none;
+}
+
+.filter-info-btn:active {
+  transform: translateY(0);
+}
 .filter-panel__header h3 {
   margin: 0;
   font-size: 1.05rem;
@@ -777,7 +795,7 @@ body::-webkit-scrollbar {
 .filter-tabs--filters {
   display: grid;
   width: 100%;
-  grid-template-columns: repeat(6, minmax(0, 1fr));
+  grid-template-columns: repeat(7, minmax(0, 1fr));
   grid-template-rows: repeat(2, minmax(0, auto));
   gap: 8px;
   align-items: center;
@@ -789,9 +807,11 @@ body::-webkit-scrollbar {
 .filter-tabs--filters .filter-tab__btn[data-tab="search"] { grid-column: 4; grid-row: 1; }
 .filter-tabs--filters .filter-tab__btn[data-tab="data"] { grid-column: 5; grid-row: 1; }
 .filter-tabs--filters .filter-tab__btn[data-tab="time"] { grid-column: 6; grid-row: 1; }
-.filter-tabs--filters .filter-tab__btn[data-tab="shortcuts"] { grid-column: 2; grid-row: 2; }
+.filter-tabs--filters .filter-tab__btn[data-tab="operations"] { grid-column: 7; grid-row: 1; }
+.filter-tabs--filters .filter-tab__btn[data-tab="shortcuts"] { grid-column: 1; grid-row: 2; }
+.filter-tabs--filters .filter-tab__btn[data-tab="paths"] { grid-column: 7; grid-row: 2; }
 
-.filter-tabs--filters .filter-presets__select { grid-column: 1; grid-row: 2; }
+.filter-tabs--filters .filter-presets__select { grid-column: 2; grid-row: 2; }
 .filter-tabs--filters .filter-presets__save { grid-column: 3; grid-row: 2; }
 .filter-tabs--filters .filter-presets__edit { grid-column: 4; grid-row: 2; }
 .filter-tabs--filters .filter-presets__delete { grid-column: 5; grid-row: 2; }
@@ -943,8 +963,7 @@ body::-webkit-scrollbar {
   padding: 8px 10px 2px;
 }
 
-#filter-panel .filter-tabs__content,
-#options-panel .filter-tabs__content {
+#filter-panel .filter-tabs__content {
   flex: 1 1 auto;
   min-height: 0;
   overflow-y: auto;
@@ -2334,6 +2353,49 @@ body.hover-suspended .album-cover-wrap:hover .album-cover.grayscale {
   background: #111;
 }
 
+
+.settings-info-modal {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.65);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 95;
+}
+
+.settings-info-modal__panel {
+  width: min(90vw, 1100px);
+  max-height: min(90vh, 820px);
+  background: linear-gradient(135deg, #1f1f23, #2d2d31, #101012);
+  border-radius: 14px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.6);
+  padding: 18px 20px;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.settings-info-modal__close {
+  align-self: flex-end;
+  margin-bottom: 8px;
+  background: transparent;
+  color: #f5f5f5;
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  border-radius: 50%;
+  width: 32px;
+  height: 32px;
+  cursor: pointer;
+  font-size: 1.1rem;
+}
+
+.settings-info-modal__content {
+  overflow-y: auto;
+  overflow-x: hidden;
+  min-height: 0;
+  padding-right: 6px;
+}
 .counter-stack {
   position: fixed;
   right: 14px;
@@ -2353,25 +2415,8 @@ body.hover-suspended .album-cover-wrap:hover .album-cover.grayscale {
   margin-top: 6px;
 }
 
-.options-info-section {
-  display: flex;
-  flex-direction: column;
-  min-height: 0;
-  height: 100%;
-  overflow: hidden;
-}
 
-.options-info-heading {
-  flex: 0 0 auto;
-}
 
-.options-info-scroll {
-  flex: 1 1 auto;
-  min-height: 0;
-  overflow-y: auto;
-  overflow-x: hidden;
-  padding-right: 6px;
-}
 
 .options-info-title {
   margin-top: 14px;
