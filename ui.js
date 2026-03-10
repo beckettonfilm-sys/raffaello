@@ -317,6 +317,7 @@ class UiController {
     this.bootstrapDataPaths();
     this.loadFilterPresets();
     this.attachEvents();
+    this.initTopNavFx();
     this.clearFileStatus();
     this.loadInitialData();
   }
@@ -424,6 +425,9 @@ class UiController {
       foldersRefreshModeLabels: null,
       fileStatus: document.getElementById("fileStatus"),
       navItems: Array.from(document.querySelectorAll(".nav-item")),
+      topNavFx: document.getElementById("topNavFx"),
+      topNavFxHighlight: document.getElementById("topNavFxHighlight"),
+      topNavFxItems: Array.from(document.querySelectorAll("[data-topnavfx-item]")),
       pageInfo: document.getElementById("pageInfo"),
       countDB: document.getElementById("countDB"),
       newCounter: document.getElementById("newCounter"),
@@ -491,6 +495,75 @@ class UiController {
       dataDirectoryHints: {},
       shortcutSelects: {}
     };
+  }
+
+  getTopNavFxActiveItem() {
+    return this.dom.topNavFxItems?.find((item) => {
+      const page = item.dataset.page;
+      if (!page) return false;
+      return page === this.uiState.currentCategory;
+    }) || null;
+  }
+
+  syncTopNavFxHighlight(target, { animate = true } = {}) {
+    const { topNavFx, topNavFxHighlight } = this.dom;
+    if (!topNavFx || !topNavFxHighlight || !target) return;
+    const hostRect = topNavFx.getBoundingClientRect();
+    const targetRect = target.getBoundingClientRect();
+    const offsetX = targetRect.left - hostRect.left;
+    const offsetY = targetRect.top - hostRect.top;
+
+    topNavFxHighlight.style.width = `${targetRect.width}px`;
+    topNavFxHighlight.style.height = `${targetRect.height}px`;
+    topNavFxHighlight.style.setProperty("--topnavfx-highlight-x", `${offsetX}px`);
+    topNavFxHighlight.style.setProperty("--topnavfx-highlight-y", `${offsetY}px`);
+    topNavFxHighlight.style.transform = `translate3d(${offsetX}px, ${offsetY}px, 0)`;
+    topNavFxHighlight.classList.add("is-visible");
+
+    if (animate) {
+      topNavFxHighlight.classList.remove("topnavfx--gooey");
+      void topNavFxHighlight.offsetWidth;
+      topNavFxHighlight.classList.add("topnavfx--gooey");
+    }
+  }
+
+  restoreTopNavFxHighlight() {
+    const activeItem = this.getTopNavFxActiveItem() || this.dom.topNavFxItems?.[0] || null;
+    if (!activeItem) return;
+    activeItem.classList.remove("topnavfx--hovered");
+    this.syncTopNavFxHighlight(activeItem, { animate: false });
+  }
+
+  initTopNavFx() {
+    const { topNavFx, topNavFxItems } = this.dom;
+    if (!topNavFx || !topNavFxItems?.length) return;
+
+    topNavFxItems.forEach((item) => {
+      item.addEventListener("mouseenter", () => {
+        item.classList.add("topnavfx--hovered");
+        this.syncTopNavFxHighlight(item);
+      });
+
+      item.addEventListener("focus", () => {
+        item.classList.add("topnavfx--hovered");
+        this.syncTopNavFxHighlight(item);
+      });
+
+      item.addEventListener("mouseleave", () => {
+        item.classList.remove("topnavfx--hovered");
+        this.restoreTopNavFxHighlight();
+      });
+
+      item.addEventListener("blur", () => {
+        item.classList.remove("topnavfx--hovered");
+        this.restoreTopNavFxHighlight();
+      });
+
+      item.addEventListener("mousedown", () => this.syncTopNavFxHighlight(item));
+    });
+
+    window.addEventListener("resize", () => this.restoreTopNavFxHighlight());
+    requestAnimationFrame(() => this.restoreTopNavFxHighlight());
   }
 
   attachEvents() {
@@ -6199,6 +6272,10 @@ class UiController {
     this.dom.navItems.forEach((item) => {
       item.classList.toggle("active", item.dataset.page === category);
     });
+    const activeItem = this.getTopNavFxActiveItem();
+    if (activeItem) {
+      this.syncTopNavFxHighlight(activeItem, { animate: false });
+    }
   }
 
   renderAlbumsPage() {

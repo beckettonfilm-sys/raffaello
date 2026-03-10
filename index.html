@@ -5,23 +5,46 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Raffaello</title>
     <link rel="stylesheet" href="styles.css" />
+    <link rel="stylesheet" href="top-nav-effect.css" />
     <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js" defer></script>
     <script type="module" src="app.js" defer></script>
   </head>
   <body class="cat-C">
     <header class="menu-header">
       <div class="menu-strip nav-links" id="navLinks">
-        <button class="nav-item menu-chip active" data-page="DB">
-          <span class="menu-chip__inner">
-            <span class="menu-chip__title">MUSIC</span>
-            <span class="count" id="countDB">(0)</span>
-          </span>
-        </button>
-        <button class="nav-item menu-chip" data-page="FD">
-          <span class="menu-chip__inner">
-            <span class="menu-chip__title">FOLDERS</span>
-          </span>
-        </button>
+        <nav class="navbar topnavfx" id="topNavFx" aria-label="Main top navigation">
+          <div class="topnavfx__highlight" id="topNavFxHighlight" aria-hidden="true"></div>
+          <ul class="navbar__menu topnavfx__menu">
+            <li class="navbar__item topnavfx__item">
+              <button class="navbar__link topnavfx__link nav-item menu-chip active" data-page="DB" data-topnavfx-item="music">
+                <span class="topnavfx__label">MUSIC</span>
+                <span class="count" id="countDB">(0)</span>
+              </button>
+            </li>
+            <li class="navbar__item topnavfx__item">
+              <button class="navbar__link topnavfx__link nav-item menu-chip" data-page="FD" data-topnavfx-item="folders">
+                <span class="topnavfx__label">FOLDERS</span>
+              </button>
+            </li>
+            <li class="navbar__item topnavfx__item">
+              <button id="filterBtn" class="navbar__link topnavfx__link menu-chip filter-btn" data-topnavfx-item="settings">
+                <span class="topnavfx__label">
+                  SETTINGS
+                  <span class="menu-chip__dot"></span>
+                </span>
+              </button>
+            </li>
+            <li class="navbar__item topnavfx__item">
+              <button id="updateBtn" class="navbar__link topnavfx__link menu-chip action-primary" data-topnavfx-item="save" aria-label="Save">
+                <svg class="topnavfx__save-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                  <path d="M5 2h11l3 3v17H5z" fill="currentColor" />
+                  <path d="M8 2h8v6H8z" fill="currentColor" opacity="0.35" />
+                  <path d="M8 14h8v5H8z" fill="currentColor" opacity="0.35" />
+                </svg>
+              </button>
+            </li>
+          </ul>
+        </nav>
         <div class="refresh-group">
           <button id="foldersRefreshBtn" class="menu-chip nav-refresh" title="Odśwież widok folderów">
             <span class="menu-chip__inner">R</span>
@@ -33,9 +56,6 @@
       </div>
 
       <div class="menu-strip header-controls">
-        <button id="updateBtn" class="menu-chip action-primary">
-          <span class="menu-chip__inner">SAVE</span>
-        </button>
         <div class="menu-select">
           <select id="containerSelect" title="Wybierz kontener (widok FOLDERS)">
             <option value="__all__">wszystkie kontenery</option>
@@ -46,12 +66,6 @@
             <option value="__all__">wszystkie</option>
           </select>
         </div>
-        <button id="filterBtn" class="menu-chip filter-btn">
-          <span class="menu-chip__inner">
-            SETTINGS
-            <span class="menu-chip__dot"></span>
-          </span>
-        </button>
         <button id="filterClearBtn" class="filter-clear-chip" aria-label="Wyczyść filtry">
           <span class="filter-clear-chip__inner">X</span>
         </button>
