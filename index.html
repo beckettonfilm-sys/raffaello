@@ -17,13 +17,13 @@
           <ul class="navbar__menu topnavfx__menu">
             <li class="navbar__item topnavfx__item">
               <button class="navbar__link topnavfx__link nav-item menu-chip active" data-page="DB" data-topnavfx-item="music">
-                <span class="topnavfx__label">MUSIC</span>
+                <span class="topnavfx__label">MUSIC<span class="topnavfx__label-tip">MUSIC</span></span>
                 <span class="count" id="countDB">(0)</span>
               </button>
             </li>
             <li class="navbar__item topnavfx__item">
               <button class="navbar__link topnavfx__link nav-item menu-chip" data-page="FD" data-topnavfx-item="folders">
-                <span class="topnavfx__label">FOLDERS</span>
+                <span class="topnavfx__label">FOLDERS<span class="topnavfx__label-tip">FOLDERS</span></span>
               </button>
             </li>
             <li class="navbar__item topnavfx__item">
@@ -31,43 +31,74 @@
                 <span class="topnavfx__label">
                   SETTINGS
                   <span class="menu-chip__dot"></span>
+                  <span class="topnavfx__label-tip">SETTINGS</span>
                 </span>
               </button>
             </li>
             <li class="navbar__item topnavfx__item">
               <button id="updateBtn" class="navbar__link topnavfx__link menu-chip action-primary" data-topnavfx-item="save" aria-label="Save">
-                <svg class="topnavfx__save-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                <svg class="topnavfx__save-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" aria-hidden="true" focusable="false">
                   <path d="M5 2h11l3 3v17H5z" fill="currentColor" />
                   <path d="M8 2h8v6H8z" fill="currentColor" opacity="0.35" />
                   <path d="M8 14h8v5H8z" fill="currentColor" opacity="0.35" />
                 </svg>
+                <span class="topnavfx__label-tip">SAVE</span>
               </button>
             </li>
           </ul>
         </nav>
-        <div class="refresh-group">
-          <button id="foldersRefreshBtn" class="menu-chip nav-refresh" title="Odśwież widok folderów">
-            <span class="menu-chip__inner">R</span>
+        <div class="refresh-group topnavfx topnavfx--compact" id="topNavFxUtility" data-topnavfx-group="utility">
+          <div class="topnavfx__highlight" aria-hidden="true"></div>
+          <button id="foldersRefreshBtn" class="menu-chip nav-refresh topnavfx__link" title="Odśwież widok folderów" data-topnavfx-item="refresh-mini" data-topnavfx-transient="true">
+            <span class="menu-chip__inner">R</span><span class="topnavfx__label-tip">R</span>
           </button>
-          <button id="appRefreshBtn" class="menu-chip nav-refresh nav-refresh--wide" title="Odśwież aplikację">
-            <span class="menu-chip__inner">REFRESH</span>
+          <button id="appRefreshBtn" class="menu-chip nav-refresh nav-refresh--wide topnavfx__link" title="Odśwież aplikację" data-topnavfx-item="refresh-main" data-topnavfx-transient="true">
+            <span class="menu-chip__inner">REFRESH</span><span class="topnavfx__label-tip">REFRESH</span>
           </button>
         </div>
       </div>
 
       <div class="menu-strip header-controls">
-        <div class="menu-select">
-          <select id="containerSelect" title="Wybierz kontener (widok FOLDERS)">
+        <div class="menu-select custom-select" data-custom-select="container">
+          <select id="containerSelect" title="Wybierz kontener (widok FOLDERS)" class="custom-select__native">
             <option value="__all__">wszystkie kontenery</option>
           </select>
+          <button
+            id="containerSelectButton"
+            class="select-button"
+            type="button"
+            role="combobox"
+            aria-label="Wybierz kontener"
+            aria-haspopup="listbox"
+            aria-expanded="false"
+            aria-controls="containerSelectDropdown"
+          >
+            <span class="selected-value">wszystkie kontenery</span>
+            <span class="arrow"></span>
+          </button>
+          <ul class="select-dropdown hidden" role="listbox" id="containerSelectDropdown" aria-labelledby="containerSelectButton"></ul>
         </div>
-        <div class="menu-select">
-          <select id="folderSelect" title="Wybierz folder (widok FOLDERS)">
+        <div class="menu-select custom-select" data-custom-select="folder">
+          <select id="folderSelect" title="Wybierz folder (widok FOLDERS)" class="custom-select__native">
             <option value="__all__">wszystkie</option>
           </select>
+          <button
+            id="folderSelectButton"
+            class="select-button"
+            type="button"
+            role="combobox"
+            aria-label="Wybierz folder"
+            aria-haspopup="listbox"
+            aria-expanded="false"
+            aria-controls="folderSelectDropdown"
+          >
+            <span class="selected-value">wszystkie</span>
+            <span class="arrow"></span>
+          </button>
+          <ul class="select-dropdown hidden" role="listbox" id="folderSelectDropdown" aria-labelledby="folderSelectButton"></ul>
         </div>
-        <button id="filterClearBtn" class="filter-clear-chip" aria-label="Wyczyść filtry">
-          <span class="filter-clear-chip__inner">X</span>
+        <button id="filterClearBtn" class="filter-clear-chip topnavfx__link" aria-label="Wyczyść filtry" data-topnavfx-item="clear" data-topnavfx-transient="true">
+          <span class="filter-clear-chip__inner">X</span><span class="topnavfx__label-tip">X</span>
         </button>
       </div>
     </header>

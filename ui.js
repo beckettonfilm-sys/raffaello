@@ -318,6 +318,7 @@ class UiController {
     this.loadFilterPresets();
     this.attachEvents();
     this.initTopNavFx();
+    this.initCustomSelects();
     this.clearFileStatus();
     this.loadInitialData();
   }
@@ -427,7 +428,9 @@ class UiController {
       navItems: Array.from(document.querySelectorAll(".nav-item")),
       topNavFx: document.getElementById("topNavFx"),
       topNavFxHighlight: document.getElementById("topNavFxHighlight"),
-      topNavFxItems: Array.from(document.querySelectorAll("[data-topnavfx-item]")),
+      topNavFxItems: Array.from(document.querySelectorAll("#topNavFx [data-topnavfx-item]")),
+      topNavFxGroups: [document.getElementById("topNavFx"), document.getElementById("topNavFxUtility"), document.querySelector(".pagination")].filter(Boolean),
+      customSelects: Array.from(document.querySelectorAll(".custom-select")),
       pageInfo: document.getElementById("pageInfo"),
       countDB: document.getElementById("countDB"),
       newCounter: document.getElementById("newCounter"),
@@ -497,73 +500,96 @@ class UiController {
     };
   }
 
-  getTopNavFxActiveItem() {
-    return this.dom.topNavFxItems?.find((item) => {
-      const page = item.dataset.page;
-      if (!page) return false;
-      return page === this.uiState.currentCategory;
-    }) || null;
+  getTopNavFxActiveItem(group) {
+    if (!group) return null;
+    const items = Array.from(group.querySelectorAll("[data-topnavfx-item]"));
+    return (
+      items.find((item) => {
+        const page = item.dataset.page;
+        return page && page === this.uiState.currentCategory;
+      }) ||
+      items.find((item) => item.classList.contains("active")) ||
+      items.find((item) => item.dataset.topnavfxTransient !== "true") ||
+      items[0] ||
+      null
+    );
   }
 
-  syncTopNavFxHighlight(target, { animate = true } = {}) {
-    const { topNavFx, topNavFxHighlight } = this.dom;
-    if (!topNavFx || !topNavFxHighlight || !target) return;
-    const hostRect = topNavFx.getBoundingClientRect();
+  syncTopNavFxHighlight(group, target, { animate = true } = {}) {
+    if (!group || !target) return;
+    const highlight = group.querySelector(".topnavfx__highlight");
+    if (!highlight) return;
+    const hostRect = group.getBoundingClientRect();
     const targetRect = target.getBoundingClientRect();
     const offsetX = targetRect.left - hostRect.left;
     const offsetY = targetRect.top - hostRect.top;
 
-    topNavFxHighlight.style.width = `${targetRect.width}px`;
-    topNavFxHighlight.style.height = `${targetRect.height}px`;
-    topNavFxHighlight.style.setProperty("--topnavfx-highlight-x", `${offsetX}px`);
-    topNavFxHighlight.style.setProperty("--topnavfx-highlight-y", `${offsetY}px`);
-    topNavFxHighlight.style.transform = `translate3d(${offsetX}px, ${offsetY}px, 0)`;
-    topNavFxHighlight.classList.add("is-visible");
+    highlight.style.width = `${targetRect.width}px`;
+    highlight.style.height = `${targetRect.height}px`;
+    highlight.style.setProperty("--topnavfx-highlight-x", `${offsetX}px`);
+    highlight.style.setProperty("--topnavfx-highlight-y", `${offsetY}px`);
+    highlight.style.transform = `translate3d(${offsetX}px, ${offsetY}px, 0)`;
+    highlight.classList.add("is-visible");
 
     if (animate) {
-      topNavFxHighlight.classList.remove("topnavfx--gooey");
-      void topNavFxHighlight.offsetWidth;
-      topNavFxHighlight.classList.add("topnavfx--gooey");
+      highlight.classList.remove("topnavfx--gooey");
+      void highlight.offsetWidth;
+      highlight.classList.add("topnavfx--gooey");
     }
   }
 
-  restoreTopNavFxHighlight() {
-    const activeItem = this.getTopNavFxActiveItem() || this.dom.topNavFxItems?.[0] || null;
+  restoreTopNavFxHighlight(group, { animate = false } = {}) {
+    if (!group) return;
+    const activeItem = this.getTopNavFxActiveItem(group);
     if (!activeItem) return;
-    activeItem.classList.remove("topnavfx--hovered");
-    this.syncTopNavFxHighlight(activeItem, { animate: false });
+    Array.from(group.querySelectorAll("[data-topnavfx-item]"))
+      .forEach((item) => item.classList.remove("topnavfx--hovered"));
+    this.syncTopNavFxHighlight(group, activeItem, { animate });
   }
 
   initTopNavFx() {
-    const { topNavFx, topNavFxItems } = this.dom;
-    if (!topNavFx || !topNavFxItems?.length) return;
+    const { topNavFxGroups } = this.dom;
+    if (!topNavFxGroups?.length) return;
 
-    topNavFxItems.forEach((item) => {
-      item.addEventListener("mouseenter", () => {
-        item.classList.add("topnavfx--hovered");
-        this.syncTopNavFxHighlight(item);
+    topNavFxGroups.forEach((group) => {
+      const items = Array.from(group.querySelectorAll("[data-topnavfx-item]"));
+      const hasOwnHighlight = Boolean(group.querySelector('.topnavfx__highlight'));
+      if (!items.length || !hasOwnHighlight) return;
+
+      items.forEach((item) => {
+        item.classList.add("topnavfx__link");
+        item.addEventListener("mouseenter", () => {
+          item.classList.add("topnavfx--hovered");
+          this.syncTopNavFxHighlight(group, item);
+        });
+
+        item.addEventListener("focus", () => {
+          item.classList.add("topnavfx--hovered");
+          this.syncTopNavFxHighlight(group, item);
+        });
+
+        item.addEventListener("mouseleave", () => {
+          item.classList.remove("topnavfx--hovered");
+          this.restoreTopNavFxHighlight(group);
+        });
+
+        item.addEventListener("blur", () => {
+          item.classList.remove("topnavfx--hovered");
+          this.restoreTopNavFxHighlight(group);
+        });
+
+        item.addEventListener("mousedown", () => this.syncTopNavFxHighlight(group, item));
       });
 
-      item.addEventListener("focus", () => {
-        item.classList.add("topnavfx--hovered");
-        this.syncTopNavFxHighlight(item);
-      });
-
-      item.addEventListener("mouseleave", () => {
-        item.classList.remove("topnavfx--hovered");
-        this.restoreTopNavFxHighlight();
-      });
-
-      item.addEventListener("blur", () => {
-        item.classList.remove("topnavfx--hovered");
-        this.restoreTopNavFxHighlight();
-      });
-
-      item.addEventListener("mousedown", () => this.syncTopNavFxHighlight(item));
+      this.restoreTopNavFxHighlight(group);
     });
 
-    window.addEventListener("resize", () => this.restoreTopNavFxHighlight());
-    requestAnimationFrame(() => this.restoreTopNavFxHighlight());
+    window.addEventListener("resize", () => {
+      this.dom.topNavFxGroups.forEach((group) => this.restoreTopNavFxHighlight(group));
+    });
+    requestAnimationFrame(() => {
+      this.dom.topNavFxGroups.forEach((group) => this.restoreTopNavFxHighlight(group));
+    });
   }
 
   attachEvents() {
@@ -6372,10 +6398,16 @@ class UiController {
     pagination.dataset.totalpages = String(totalPages);
 
     const fragment = document.createDocumentFragment();
+    const paginationHighlight = document.createElement("div");
+    paginationHighlight.className = "topnavfx__highlight";
+    paginationHighlight.setAttribute("aria-hidden", "true");
+    fragment.appendChild(paginationHighlight);
     const createButton = ({ label, page, disabled = false }) => {
       const btn = document.createElement("button");
       btn.type = "button";
-      btn.className = "menu-chip pagination__btn";
+      btn.className = "menu-chip pagination__btn topnavfx__link";
+      btn.dataset.topnavfxItem = `page-${page}`;
+      btn.dataset.topnavfxTransient = "true";
       btn.dataset.page = String(page);
       const span = document.createElement("span");
       span.className = "menu-chip__inner";
@@ -6395,7 +6427,7 @@ class UiController {
     const center = document.createElement("div");
     center.className = "pagination__center";
     const count = document.createElement("span");
-    count.className = "pagination__count";
+    count.className = "pagination__count pagination__count--neutral";
     const countText = totalPages ? `${currentPage + 1} z ${totalPages}` : "0 z 0";
     const countValue = document.createElement("span");
     countValue.textContent = countText;
@@ -6443,6 +6475,7 @@ class UiController {
       pagination.appendChild(pageInfo);
     }
     pagination.appendChild(fragment);
+    this.restoreTopNavFxHighlight(pagination);
   }
 
   buildAlbumEmbedLink(link) {
@@ -7525,6 +7558,7 @@ class UiController {
     } else {
       containerSelect.value = "__all__";
     }
+    this.refreshCustomSelect(containerSelect);
   }
 
   rebuildCollectionSelect() {
@@ -7588,6 +7622,143 @@ class UiController {
     } else {
       folderSelect.value = "__all__";
     }
+    this.refreshCustomSelect(folderSelect);
+  }
+
+
+  initCustomSelects() {
+    const customSelects = this.dom.customSelects || [];
+    if (!customSelects.length) return;
+
+    customSelects.forEach((customSelect) => {
+      const nativeSelect = customSelect.querySelector("select");
+      const selectButton = customSelect.querySelector(".select-button");
+      const dropdown = customSelect.querySelector(".select-dropdown");
+      const selectedValue = selectButton?.querySelector(".selected-value");
+      if (!nativeSelect || !selectButton || !dropdown || !selectedValue) return;
+
+      let focusedIndex = -1;
+
+      const getOptions = () => Array.from(dropdown.querySelectorAll("li[role='option']"));
+
+      const updateFocus = () => {
+        const options = getOptions();
+        options.forEach((option, index) => {
+          option.setAttribute("tabindex", index === focusedIndex ? "0" : "-1");
+          if (index === focusedIndex) option.focus();
+        });
+      };
+
+      const toggleDropdown = (expand = null) => {
+        const shouldOpen = expand !== null ? expand : dropdown.classList.contains("hidden");
+        dropdown.classList.toggle("hidden", !shouldOpen);
+        selectButton.setAttribute("aria-expanded", String(shouldOpen));
+        if (shouldOpen) {
+          const options = getOptions();
+          focusedIndex = options.findIndex((option) => option.classList.contains("selected"));
+          focusedIndex = focusedIndex === -1 ? 0 : focusedIndex;
+          updateFocus();
+        } else {
+          focusedIndex = -1;
+          selectButton.focus();
+        }
+      };
+
+      const handleOptionSelect = (option) => {
+        const options = getOptions();
+        options.forEach((opt) => opt.classList.remove("selected"));
+        if (option.dataset.value !== "clear") {
+          option.classList.add("selected");
+          nativeSelect.value = option.dataset.value || "__all__";
+          selectedValue.textContent = option.textContent.trim();
+        } else {
+          nativeSelect.value = "__all__";
+          selectedValue.textContent = nativeSelect.options[0]?.textContent || "Open this select menu";
+        }
+        nativeSelect.dispatchEvent(new Event("change", { bubbles: true }));
+      };
+
+      const bindOptionEvents = () => {
+        getOptions().forEach((option) => {
+          option.addEventListener("click", () => {
+            handleOptionSelect(option);
+            toggleDropdown(false);
+          });
+        });
+      };
+
+      selectButton.addEventListener("click", () => toggleDropdown());
+      selectButton.addEventListener("keydown", (event) => {
+        if (event.key === "ArrowDown") {
+          event.preventDefault();
+          toggleDropdown(true);
+        } else if (event.key === "Escape") {
+          toggleDropdown(false);
+        }
+      });
+
+      dropdown.addEventListener("keydown", (event) => {
+        const options = getOptions();
+        if (!options.length) return;
+        if (event.key === "ArrowDown") {
+          event.preventDefault();
+          focusedIndex = (focusedIndex + 1) % options.length;
+          updateFocus();
+        } else if (event.key === "ArrowUp") {
+          event.preventDefault();
+          focusedIndex = (focusedIndex - 1 + options.length) % options.length;
+          updateFocus();
+        } else if (event.key === "Enter" || event.key === " ") {
+          event.preventDefault();
+          handleOptionSelect(options[focusedIndex]);
+          toggleDropdown(false);
+        } else if (event.key === "Escape") {
+          toggleDropdown(false);
+        }
+      });
+
+      document.addEventListener("click", (event) => {
+        if (!customSelect.contains(event.target)) {
+          toggleDropdown(false);
+        }
+      });
+
+      customSelect.__refreshFromNative = () => {
+        dropdown.innerHTML = "";
+        Array.from(nativeSelect.options).forEach((option, index) => {
+          const li = document.createElement("li");
+          li.setAttribute("role", "option");
+          li.dataset.value = option.value;
+          li.textContent = option.textContent;
+          if (option.value === nativeSelect.value) {
+            li.classList.add("selected");
+            selectedValue.textContent = option.textContent;
+          }
+          li.setAttribute("tabindex", index === 0 ? "0" : "-1");
+          dropdown.appendChild(li);
+        });
+        const clearOption = document.createElement("li");
+        clearOption.setAttribute("role", "option");
+        clearOption.dataset.value = "clear";
+        clearOption.innerHTML = "<span>Clear selection</span>";
+        clearOption.setAttribute("tabindex", "-1");
+        dropdown.appendChild(clearOption);
+        bindOptionEvents();
+      };
+
+      nativeSelect.addEventListener("change", () => {
+        const selectedOption = nativeSelect.selectedOptions?.[0];
+        if (selectedOption) selectedValue.textContent = selectedOption.textContent;
+        customSelect.__refreshFromNative?.();
+      });
+
+      customSelect.__refreshFromNative();
+    });
+  }
+
+  refreshCustomSelect(selectElement) {
+    const wrapper = selectElement?.closest?.(".custom-select");
+    wrapper?.__refreshFromNative?.();
   }
 
   markFoldersPending() {
