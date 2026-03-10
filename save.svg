@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+  <path d="M5 2h11l3 3v17H5z" fill="currentColor"/>
+  <path d="M8 2h8v6H8z" fill="currentColor" opacity="0.35"/>
+  <path d="M8 14h8v5H8z" fill="currentColor" opacity="0.35"/>
+</svg>
