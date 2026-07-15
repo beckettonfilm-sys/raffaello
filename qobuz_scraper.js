@@ -4,6 +4,9 @@ const cheerio = require("cheerio");
 const Bottleneck = require("bottleneck");
 const { fetch } = require("undici");
 const XLSX = require("xlsx");
+const { formatRunTimestamp, atomicWriteFile, validateXlsx, ensureDir } = require("./output_files");
+const { RunTiming } = require("./run_timing");
+const { abortableSleep, throwIfAborted } = require("./abort_utils");
 
 const DEFAULTS = {
   date_from: "01.01.2020",
@@ -19,10 +22,14 @@ const DEFAULTS = {
   user_agent: "ElectronQobuzScraper/1.0",
 };
 
-const OUTPUT_FILES = {
-  linksTxt: "list_links.txt",
-  xlsx: "title_artist_label.xlsx",
-  missingDatesTxt: "album_date_missing.txt"
+const OUTPUT_BASES = {
+  linksTxt: "list_links",
+  xlsx: "title_artist_label",
+  missingDatesTxt: "album_date_missing",
+  checkpoint: "qobuz_checkpoint",
+  logTxt: "download_nr_log",
+  reportTxt: "download_nr_report",
+  reportJson: "download_nr_report"
 };
 
 function makeError(code, message, details = {}) {
@@ -32,8 +39,8 @@ function makeError(code, message, details = {}) {
   return error;
 }
 
-function sleep(ms) {
-  return new Promise((resolve) => setTimeout(resolve, ms));
+function sleep(ms, signal, session) {
+  return abortableSleep(ms, signal, session);
 }
 
 function parsePlDate(text, fieldName) {
@@ -436,12 +443,16 @@ function writeXlsx(filePath, records) {
   XLSX.writeFile(wb, filePath);
 }
 
-async function fetchHtml(url, config, stats) {
+async function fetchHtml(url, config, stats, { signal, session, emitProgress, phase = "fetch", timing } = {}) {
   let lastError = null;
   for (let attempt = 1; attempt <= config.retries; attempt += 1) {
     try {
+      throwIfAborted(signal, session);
       const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), config.timeout_ms);
+      const onAbort = () => controller.abort(signal?.reason || "ABORTED");
+      signal?.addEventListener("abort", onAbort, { once: true });
+      const timeout = setTimeout(() => controller.abort("TIMEOUT"), config.timeout_ms);
+      const reqStart = Date.now();
       const response = await fetch(url, {
         signal: controller.signal,
         headers: {
@@ -450,12 +461,17 @@ async function fetchHtml(url, config, stats) {
         }
       });
       clearTimeout(timeout);
+      signal?.removeEventListener("abort", onAbort);
+      timing?.count(phase, Date.now() - reqStart);
 
       if (response.status === 429) {
         if (attempt < config.retries) {
           const backoff = 2000 * (2 ** (attempt - 1));
+          stats.http429 = (stats.http429 || 0) + 1; stats.retries = (stats.retries || 0) + 1;
+          emitProgress?.({ type:"log", level:"warning", code:"HTTP_429", phase, url, attempt, maxAttempts: config.retries, retryAfterMs: backoff, message:`HTTP 429 — ponowienie za ${backoff} ms [${attempt}/${config.retries}]` });
           console.warn(`[Qobuz Scraper] 429 Too Many Requests: ${url}, retry za ${backoff}ms`);
-          await sleep(backoff);
+          timing?.add("retry_backoff", backoff);
+          await sleep(backoff, signal, session);
           continue;
         }
       }
@@ -463,8 +479,11 @@ async function fetchHtml(url, config, stats) {
       if (response.status >= 500 && response.status < 600) {
         if (attempt < config.retries) {
           const backoff = 1000 * (2 ** (attempt - 1));
+          stats.http5xx = (stats.http5xx || 0) + 1; stats.retries = (stats.retries || 0) + 1;
+          emitProgress?.({ type:"log", level:"warning", code:"HTTP_5XX", phase, url, attempt, maxAttempts: config.retries, retryAfterMs: backoff, message:`HTTP ${response.status} — ponowienie za ${backoff} ms [${attempt}/${config.retries}]` });
           console.warn(`[Qobuz Scraper] HTTP ${response.status}: ${url}, retry za ${backoff}ms`);
-          await sleep(backoff);
+          timing?.add("retry_backoff", backoff);
+          await sleep(backoff, signal, session);
           continue;
         }
       }
@@ -480,8 +499,11 @@ async function fetchHtml(url, config, stats) {
       lastError = error;
       if (attempt >= config.retries) break;
       const backoff = 1000 * (2 ** (attempt - 1));
+      stats.networkErrors = (stats.networkErrors || 0) + 1; stats.retries = (stats.retries || 0) + 1;
+      emitProgress?.({ type:"log", level:"warning", code: error?.name === "AbortError" ? "ABORTED" : "NETWORK_ERROR", phase, url, attempt, maxAttempts: config.retries, retryAfterMs: backoff, message:`Błąd sieci — ponowienie za ${backoff} ms [${attempt}/${config.retries}]` });
       console.warn(`[Qobuz Scraper] Błąd sieci (${attempt}/${config.retries}): ${error.message}, retry za ${backoff}ms`);
-      await sleep(backoff);
+      timing?.add("retry_backoff", backoff);
+      await sleep(backoff, signal, session);
     }
   }
   stats.httpErrors += 1;
@@ -489,14 +511,22 @@ async function fetchHtml(url, config, stats) {
   return null;
 }
 
-function emitProgress(emit, payload) {
-  if (typeof emit === "function") emit(payload);
+function formatElapsed(ms) { const s = Math.floor(ms / 1000); const hh = String(Math.floor(s / 3600)).padStart(2,"0"); const mm = String(Math.floor((s % 3600) / 60)).padStart(2,"0"); const ss = String(s % 60).padStart(2,"0"); const mmm = String(Math.floor(ms % 1000)).padStart(3,"0"); return `${hh}:${mm}:${ss}.${mmm}`; }
+function emitProgress(emit, payload, session) {
+  const event = { sessionId: session?.sessionId, runStamp: session?.runStamp, type: payload.type || "progress", level: payload.level || "info", timestamp: Date.now(), ...payload };
+  if (session?.log && event.message) session.log.push(`${formatElapsed(Date.now() - session.startedAt)} | ${String(event.level).toUpperCase()} | ${event.code || "-"} | ${event.phase || "-"} | ${event.message}`);
+  if (typeof emit === "function") emit(event);
 }
 
-async function runQobuzScraper({ appRootOverride, dryRun = false, qobuzSettings = {}, emitProgress: progressEmitter } = {}) {
+async function runQobuzScraper({ appRootOverride, dryRun = false, qobuzSettings = {}, emitProgress: progressEmitter, session: providedSession, signal } = {}) {
   const started = Date.now();
   const appRoot = path.resolve(appRootOverride || process.cwd());
   const filesDir = path.join(appRoot, "FILES");
+  const session = providedSession || { sessionId: `qobuz-scrape-${started}`, runStamp: formatRunTimestamp(new Date(started)), startedAt: started, log: [], manifest: { files: [] } };
+  session.signal = signal || session.signal;
+  session.sessionDir = session.sessionDir || path.join(filesDir, "download", ".sessions", session.sessionId);
+  session.manifest = session.manifest || { sessionId: session.sessionId, runStamp: session.runStamp, status: "running", files: [] };
+  const timing = session.timings || new RunTiming();
 
   const stats = {
     labelsTotal: 0,
@@ -510,10 +540,11 @@ async function runQobuzScraper({ appRootOverride, dryRun = false, qobuzSettings 
     missingAlbumDate: 0,
     duplicatesRemoved: 0,
     httpErrors: 0,
-    parseErrors: 0
+    parseErrors: 0, http429: 0, http5xx: 0, timeouts: 0, networkErrors: 0, retries: 0
   };
 
-  emitProgress(progressEmitter, { phase: "init", percent: 1, message: "Reading settings..." });
+  emitProgress(progressEmitter, { type:"state", phase: "init", percent: 1, message: "Rozpoczęto sesję QOBUZ SCRAPE" }, session);
+  timing.start("read_settings");
   const general = qobuzSettings?.general || {};
   const config = {
     ...DEFAULTS,
@@ -544,6 +575,7 @@ async function runQobuzScraper({ appRootOverride, dryRun = false, qobuzSettings 
     config.date_to = tmp;
   }
 
+  timing.end("read_settings");
   console.log("[Qobuz Scraper] Start konfiguracji:", {
     appRoot,
     date_from: formatPlDate(config.date_from),
@@ -557,12 +589,14 @@ async function runQobuzScraper({ appRootOverride, dryRun = false, qobuzSettings 
     genre_root: config.genre_root
   });
 
-  emitProgress(progressEmitter, { phase: "labels", percent: 3, message: "Loading labels..." });
+  emitProgress(progressEmitter, { phase: "labels", percent: 3, message: "Loading labels..." }, session);
+  timing.start("prepare_labels");
   const labels = (Array.isArray(qobuzSettings?.labels) ? qobuzSettings.labels : [])
     .filter((label) => Number(label?.is_active) === 1)
     .map((label) => ({ name: String(label?.name || "").trim(), url: String(label?.url || "").trim() }))
     .filter((label) => label.name && label.url);
   stats.labelsTotal = labels.length;
+  timing.end("prepare_labels");
 
   const listingLimiter = new Bottleneck({ maxConcurrent: 1, minTime: Math.max(0, config.delay_listing * 1000) });
   const albumLimiter = new Bottleneck({ maxConcurrent: 1, minTime: Math.max(0, config.delay_album * 1000) });
@@ -570,16 +604,18 @@ async function runQobuzScraper({ appRootOverride, dryRun = false, qobuzSettings 
   const candidates = [];
   const seenByLabelUrl = new Set();
 
+  try {
   for (let i = 0; i < labels.length; i += 1) {
     const label = labels[i];
     stats.labelsProcessed += 1;
+    throwIfAborted(session.signal, session);
     emitProgress(progressEmitter, {
       phase: "listing",
       message: `Scraping label ${i + 1}/${labels.length}: ${label.name}`,
       current: i + 1,
       total: labels.length,
       percent: Math.min(40, 5 + Math.round(((i + 1) / Math.max(1, labels.length)) * 35))
-    });
+    }, session);
 
     let normalized = "";
     try {
@@ -592,7 +628,9 @@ async function runQobuzScraper({ appRootOverride, dryRun = false, qobuzSettings 
       if (page > 1 && config.max_pages_per_label <= 1) break;
       const pageUrl = buildLabelPageUrl(normalized, page);
       console.log(`[Qobuz Scraper] Label=${label.name}, page=${page}/${config.max_pages_per_label}, url=${pageUrl}`);
-      const html = await listingLimiter.schedule(() => fetchHtml(pageUrl, config, stats));
+      throwIfAborted(session.signal, session);
+      emitProgress(progressEmitter, { phase:"listing_fetch", message:`Pobieram stronę listingu ${page}`, url: pageUrl }, session);
+      const html = await listingLimiter.schedule(() => fetchHtml(pageUrl, config, stats, { signal: session.signal, session, emitProgress: (p)=>emitProgress(progressEmitter,p,session), phase:"listing_fetch", timing }));
       if (!html) continue;
       let extracted;
       try {
@@ -623,24 +661,32 @@ async function runQobuzScraper({ appRootOverride, dryRun = false, qobuzSettings 
     }
   }
 
+  } catch (error) {
+    if (error?.code !== "STOP_AND_SAVE" && error?.message !== "STOP_AND_SAVE") throw error;
+    session.stopRequested = true;
+    emitProgress(progressEmitter, { type:"state", level:"warning", code:"STOP_AND_SAVE", phase:"listing", message:"Żądanie PRZERWIJ I ZAPISZ — przechodzę do zapisu częściowego." }, session);
+  }
+
   stats.candidatesTotal = candidates.length;
   console.log(`[Qobuz Scraper] Kandydaci po strict listing date: ${candidates.length}`);
 
   const accepted = [];
   const missingRows = [];
 
+  try {
   for (let i = 0; i < candidates.length; i += 1) {
     const cand = candidates[i];
     stats.albumsFetched += 1;
+    throwIfAborted(session.signal, session);
     emitProgress(progressEmitter, {
       phase: "albums",
       message: `Fetching album ${i + 1}/${candidates.length}`,
       current: i + 1,
       total: candidates.length,
       percent: Math.min(90, 40 + Math.round(((i + 1) / Math.max(1, candidates.length)) * 50))
-    });
+    }, session);
 
-    const html = await albumLimiter.schedule(() => fetchHtml(cand.album_url, config, stats));
+    const html = await albumLimiter.schedule(() => fetchHtml(cand.album_url, config, stats, { signal: session.signal, session, emitProgress: (p)=>emitProgress(progressEmitter,p,session), phase:"album_fetch", timing }));
     if (!html) continue;
     let det;
     try {
@@ -656,6 +702,7 @@ async function runQobuzScraper({ appRootOverride, dryRun = false, qobuzSettings 
     if (!finalRelease) {
       finalRelease = cand.release_date_listing;
       stats.missingAlbumDate += 1;
+      emitProgress(progressEmitter, { type:"log", level:"warning", code:"MISSING_DATE", phase:"album_parse", message:"Brak daty albumu — użyto daty z listingu", url:cand.album_url }, session);
       missingRows.push(`${cand.label_name}\t${cand.album_url}\t${formatPlDate(cand.release_date_listing)}\t${det.title}\t${det.main_artists}`);
     } else if (finalRelease.getTime() < config.date_from.getTime() || finalRelease.getTime() > config.date_to.getTime()) {
       stats.rejectedByDateMismatch += 1;
@@ -682,6 +729,12 @@ async function runQobuzScraper({ appRootOverride, dryRun = false, qobuzSettings 
     });
   }
 
+  } catch (error) {
+    if (error?.code !== "STOP_AND_SAVE" && error?.message !== "STOP_AND_SAVE") throw error;
+    session.stopRequested = true;
+    emitProgress(progressEmitter, { type:"state", level:"warning", code:"STOP_AND_SAVE", phase:"albums", message:"Żądanie PRZERWIJ I ZAPISZ — zapisuję ukończone albumy." }, session);
+  }
+
   const dedup = [];
   const seen = new Set();
   accepted.forEach((record) => {
@@ -696,39 +749,55 @@ async function runQobuzScraper({ appRootOverride, dryRun = false, qobuzSettings 
   stats.accepted = dedup.length;
 
   const outputDir = path.join(filesDir, "download");
-  const linksTxt = path.join(outputDir, OUTPUT_FILES.linksTxt);
-  const xlsxPath = path.join(outputDir, OUTPUT_FILES.xlsx);
-  const missingPath = path.join(outputDir, OUTPUT_FILES.missingDatesTxt);
+  let linksTxt = null;
+  let xlsxPath = null;
+  let missingPath = null;
 
-  emitProgress(progressEmitter, { phase: "writing", percent: 92, message: "Writing outputs..." });
-  if (!dryRun) {
-    fs.mkdirSync(outputDir, { recursive: true });
-    writeLinksTxt(linksTxt, dedup.map((row) => row.album_url));
-    emitProgress(progressEmitter, { phase: "writing", percent: 96, message: "Writing XLSX..." });
-    writeXlsx(xlsxPath, dedup);
+  const partial = session.stopRequested === true;
+  const statusText = partial ? "partial" : "completed";
+  const namePart = partial ? `PARTIAL_${session.runStamp}` : session.runStamp;
+  emitProgress(progressEmitter, { phase: "writing", percent: 92, message: partial ? "Zatrzymano — zapisuję wynik częściowy..." : "Writing outputs..." }, session);
+  let logTxt = null, reportTxt = null, reportJson = null, checkpointJson = null;
+  if (!dryRun && !session.cancelRequested) {
+    await ensureDir(outputDir);
+    await ensureDir(session.sessionDir);
+    const linksContent = dedup.length ? `${dedup.map((row) => row.album_url).join("\n")}\n` : "";
+    linksTxt = await atomicWriteFile({ sessionDir: session.sessionDir, outputDir, baseName: `${OUTPUT_BASES.linksTxt}_${namePart}`, extension: ".txt", content: linksContent, type:"links", manifest: session.manifest, partial });
+    emitProgress(progressEmitter, { type:"log", level:"success", phase:"writing", code:"FILE_SAVED", message:`Zapisano listę linków: ${linksTxt}`, path: linksTxt }, session);
+    emitProgress(progressEmitter, { phase: "writing", percent: 96, message: "Writing XLSX..." }, session);
+    xlsxPath = await atomicWriteFile({ sessionDir: session.sessionDir, outputDir, baseName: `${OUTPUT_BASES.xlsx}_${namePart}`, extension: ".xlsx", type:"xlsx", manifest: session.manifest, partial, validate: validateXlsx(["album_title","main_artists","label","album_url","release_date"]), content: (tmp)=>writeXlsx(tmp, dedup) });
+    emitProgress(progressEmitter, { type:"log", level:"success", phase:"writing", code:"FILE_SAVED", message:`Zapisano XLSX: ${xlsxPath}`, path: xlsxPath }, session);
     if (missingRows.length) {
-      fs.writeFileSync(
-        missingPath,
-        `label\talbum_url\tlisting_release_date\talbum_title\tmain_artists\n${missingRows.join("\n")}\n`,
-        "utf-8"
-      );
-    } else if (fs.existsSync(missingPath)) {
-      fs.unlinkSync(missingPath);
+      missingPath = await atomicWriteFile({ sessionDir: session.sessionDir, outputDir, baseName: `${OUTPUT_BASES.missingDatesTxt}_${namePart}`, extension: ".txt", content: `label\talbum_url\tlisting_release_date\talbum_title\tmain_artists\n${missingRows.join("\n")}\n`, type:"missingDates", manifest: session.manifest, partial });
     }
+    const report = { sessionId: session.sessionId, runStamp: session.runStamp, status: statusText, startedAt: new Date(started).toISOString(), finishedAt: new Date().toISOString(), stats, timings: timing.snapshot(), files: session.manifest.files };
+    if (partial) checkpointJson = await atomicWriteFile({ sessionDir: session.sessionDir, outputDir, baseName: `${OUTPUT_BASES.checkpoint}_${namePart}`, extension: ".json", content: JSON.stringify({ ...report, config, candidatesTotal: candidates.length, completedRecords: dedup.length, incompleteRecords: Math.max(0, candidates.length - stats.albumsFetched), lastCompletedIndex: stats.albumsFetched - 1, warnings: session.log.filter(l=>l.includes("WARNING")), errors: session.log.filter(l=>l.includes("ERROR")) }, null, 2), type:"checkpoint", manifest: session.manifest, partial });
+    logTxt = await atomicWriteFile({ sessionDir: session.sessionDir, outputDir, baseName: `${OUTPUT_BASES.logTxt}_${namePart}`, extension: ".txt", content: `${session.log.join("\n")}\n`, type:"log", manifest: session.manifest, partial });
+    reportTxt = await atomicWriteFile({ sessionDir: session.sessionDir, outputDir, baseName: `${OUTPUT_BASES.reportTxt}_${namePart}`, extension: ".txt", content: [`STATUS: ${partial ? "WYNIK CZĘŚCIOWY" : "PEŁNY SUKCES"}`, `sessionId: ${session.sessionId}`, `runStamp: ${session.runStamp}`, `accepted: ${stats.accepted}`, `candidates: ${stats.candidatesTotal}`].join("\n") + "\n", type:"reportTxt", manifest: session.manifest, partial });
+    reportJson = await atomicWriteFile({ sessionDir: session.sessionDir, outputDir, baseName: `${OUTPUT_BASES.reportJson}_${namePart}`, extension: ".json", content: JSON.stringify({ ...report, manifest: session.manifest }, null, 2), type:"reportJson", manifest: session.manifest, partial });
   }
 
   const finished = Date.now();
-  emitProgress(progressEmitter, { phase: "done", percent: 100, message: "Done" });
+  session.manifest.status = statusText;
+  emitProgress(progressEmitter, { type:"summary", level: partial ? "warning" : "success", phase: "done", percent: 100, message: partial ? "STATUS: WYNIK CZĘŚCIOWY" : "PEŁNY SUKCES" }, session);
   console.log("[Qobuz Scraper] Podsumowanie:", stats);
 
   return {
     ok: true,
+    status: statusText,
+    sessionId: session.sessionId,
+    runStamp: session.runStamp,
     outputDir,
     files: {
       linksTxt,
       xlsx: xlsxPath,
-      missingDatesTxt: missingRows.length ? missingPath : null
+      missingDatesTxt: missingRows.length ? missingPath : null,
+      checkpointJson,
+      logTxt,
+      reportTxt,
+      reportJson
     },
+    manifest: session.manifest,
     stats,
     timing: {
       startedAt: new Date(started).toISOString(),

@@ -1,0 +1,4 @@
+function makeAbortError(reason = 'ABORTED') { const e = new Error(reason); e.name = 'AbortError'; e.code = reason; return e; }
+function throwIfAborted(signal, session) { if (signal?.aborted || session?.cancelRequested) throw makeAbortError('CANCELLED'); if (session?.stopRequested) throw makeAbortError('STOP_AND_SAVE'); }
+function abortableSleep(ms, signal, session) { return new Promise((resolve, reject) => { try { throwIfAborted(signal, session); } catch (e) { reject(e); return; } const t = setTimeout(resolve, Math.max(0, ms)); const onAbort = () => { clearTimeout(t); reject(makeAbortError(session?.stopRequested ? 'STOP_AND_SAVE' : 'CANCELLED')); }; signal?.addEventListener('abort', onAbort, { once: true }); }).finally(() => {}); }
+module.exports = { abortableSleep, throwIfAborted, makeAbortError };

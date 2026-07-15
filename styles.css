@@ -2789,3 +2789,31 @@ body.hover-suspended .album-cover-wrap:hover .album-cover.grayscale {
     grid-template-columns: 1fr;
   }
 }
+
+.download-nr-progress {
+  display: grid;
+  gap: 0.55rem;
+  margin-top: 0.75rem;
+  color: var(--text-color, #eee);
+}
+.download-nr-progress__meta,
+.download-nr-progress__counters {
+  font-size: 0.85rem;
+  opacity: 0.9;
+}
+.download-nr-progress__log {
+  max-height: 220px;
+  overflow: auto;
+  padding: 0.65rem;
+  border-radius: 10px;
+  background: rgba(0, 0, 0, 0.28);
+  font-size: 0.78rem;
+  line-height: 1.35;
+  white-space: pre-wrap;
+}
+.download-nr-progress__log--collapsed {
+  max-height: 2.8rem;
+}
+.download-nr-progress__actions {
+  flex-wrap: wrap;
+}

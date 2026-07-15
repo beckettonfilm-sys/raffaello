@@ -86,6 +86,9 @@ async function runQobuzScraper(options = {}) {
   }
   return response;
 }
+async function stopQobuzSession(sessionId) { return ensureElectronAPI().stopQobuzSession({ sessionId }); }
+async function cancelQobuzSession(sessionId) { return ensureElectronAPI().cancelQobuzSession({ sessionId }); }
+async function getQobuzSessionState(sessionId) { return ensureElectronAPI().getQobuzSessionState({ sessionId }); }
 
 async function deleteAlbumAssets(payload = {}) {
   const api = ensureElectronAPI();
@@ -307,6 +310,9 @@ export {
   fetchQobuzSettings,
   saveQobuzSettings,
   runQobuzScraper,
+  stopQobuzSession,
+  cancelQobuzSession,
+  getQobuzSessionState,
   selectDirectory,
   selectFile,
   getAppDirectory,

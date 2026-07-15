@@ -18,6 +18,8 @@ import {
   fetchQobuzSettings,
   saveQobuzSettings,
   runQobuzScraper,
+  stopQobuzSession,
+  cancelQobuzSession,
   deleteAlbumAssets,
   selectDirectory,
   selectFile,
@@ -4504,6 +4506,57 @@ class UiController {
     };
   }
 
+  openDownloadNrProgressModal({ title = "Download NR", message = "" } = {}) {
+    const base = this.openImportProgressModal({ title, message });
+    const overlay = document.querySelector(".modal-overlay");
+    const card = overlay?.querySelector(".modal-card");
+    const details = document.createElement("div");
+    details.className = "download-nr-progress";
+    details.innerHTML = `
+      <div class="download-nr-progress__meta">Sesja: <span data-session>—</span> · Status: <span data-status>running</span></div>
+      <div class="download-nr-progress__counters">⚠️ <span data-warn>0</span> · ❌ <span data-err>0</span> · retry <span data-retry>0</span></div>
+      <pre class="download-nr-progress__log"></pre>
+      <div class="modal-actions download-nr-progress__actions">
+        <button class="modal-btn" data-stop>PRZERWIJ I ZAPISZ</button>
+        <button class="modal-btn" data-cancel>ANULUJ</button>
+        <button class="modal-btn" data-copy>KOPIUJ LOG</button>
+        <button class="modal-btn" data-toggle>SZCZEGÓŁY</button>
+      </div>`;
+    card?.appendChild(details);
+    const logEl = details.querySelector("[data-log], .download-nr-progress__log");
+    const entries = [];
+    let warnings = 0, errors = 0, retries = 0, sessionId = "";
+    const append = (payload = {}) => {
+      if (payload.sessionId) sessionId = payload.sessionId;
+      if (payload.level === "warning") warnings += 1;
+      if (payload.level === "error") errors += 1;
+      if (payload.code && String(payload.code).includes("RETRY")) retries += 1;
+      if (payload.retryAfterMs) retries += 1;
+      const line = `${new Date(payload.timestamp || Date.now()).toLocaleTimeString()}  ${String(payload.level || "info").toUpperCase()}  ${payload.code || "-"} — ${payload.message || ""}`;
+      entries.push(line);
+      if (entries.length > 300) entries.shift();
+      logEl.textContent = entries.join("\n");
+      logEl.scrollTop = logEl.scrollHeight;
+      details.querySelector("[data-session]").textContent = payload.runStamp || sessionId || "—";
+      details.querySelector("[data-status]").textContent = payload.phase || payload.type || "running";
+      details.querySelector("[data-warn]").textContent = String(warnings);
+      details.querySelector("[data-err]").textContent = String(errors);
+      details.querySelector("[data-retry]").textContent = String(retries);
+    };
+    details.querySelector("[data-copy]").addEventListener("click", () => navigator.clipboard?.writeText(entries.join("\n")));
+    details.querySelector("[data-toggle]").addEventListener("click", () => logEl.classList.toggle("download-nr-progress__log--collapsed"));
+    return {
+      update: (payload = {}) => { base.update(payload); append(payload); },
+      getSessionId: () => sessionId,
+      onStop: (handler) => details.querySelector("[data-stop]").addEventListener("click", async (event) => { event.currentTarget.disabled = true; details.querySelector("[data-cancel]").disabled = true; base.update({ message: "Zatrzymywanie i zapisywanie..." }); await handler(sessionId); }),
+      onCancel: (handler) => details.querySelector("[data-cancel]").addEventListener("click", async (event) => {
+        const ok = await this.confirmModal({ title: "Anulować?", message: "Anulowanie przerwie cały proces i usunie wyniki bieżącej sesji.\nWcześniejsze dane i pliki pozostaną bez zmian.\nCzy na pewno anulować?", confirmText: "ANULUJ", cancelText: "WRÓĆ" });
+        if (!ok) return; event.currentTarget.disabled = true; details.querySelector("[data-stop]").disabled = true; base.update({ message: "Anulowanie..." }); await handler(sessionId);
+      }),
+      close: base.close
+    };
+  }
+
   parseReleaseDateInput(value) {
     if (value === undefined || value === null || value === "") return 0;
     if (typeof value === "number") {
@@ -8122,10 +8175,12 @@ class UiController {
     let unsubscribe = () => {};
     try {
       this.startOperation("🕸️ Uruchamiam Qobuz Scraper...");
-      progressModal = this.openImportProgressModal({
-        title: "Qobuz Scraper",
+      progressModal = this.openDownloadNrProgressModal({
+        title: "Qobuz Scraper / Download NR",
         message: "Starting..."
       });
+      progressModal.onStop(async (sessionId) => { if (sessionId) await stopQobuzSession(sessionId); });
+      progressModal.onCancel(async (sessionId) => { if (sessionId) await cancelQobuzSession(sessionId); });
 
       unsubscribe = onQobuzScrapeProgress((payload = {}) => {
         const current = Number(payload.current || 0);
@@ -8145,8 +8200,9 @@ class UiController {
 
       const response = await runQobuzScraper({});
       console.log("[Qobuz Scraper] Result:", response);
-      this.showStatusMessage("✅ Qobuz scrape done");
-      return true;
+      this.lastQobuzScrapeResult = response;
+      this.showStatusMessage(response.status === "partial" ? "⚠️ Qobuz scrape partial saved" : "✅ Qobuz scrape done");
+      return response;
     } catch (error) {
       console.error("[Qobuz Scraper] Error:", error);
       this.showStatusMessage(`❌ Qobuz scrape error: ${error.message}`);
@@ -8172,8 +8228,8 @@ class UiController {
   }
 
   async runDownloadNrWorkflow() {
-    const scrapeOk = await this.executeQobuzScrapeStep();
-    if (!scrapeOk) return;
+    const scrapeResult = await this.executeQobuzScrapeStep();
+    if (!scrapeResult || scrapeResult.status === "partial") return;
 
     const shouldContinue = await this.askDownloadNrContinue();
     if (!shouldContinue) return;
@@ -8194,6 +8250,8 @@ class UiController {
       directory,
       autoSelectLatestFile: true,
       enableLabelMatch: true,
+      labelXlsxPath: scrapeResult?.files?.xlsx,
+      sessionId: scrapeResult?.sessionId,
       skipSelectionDialog: true
     });
     if (!importOk) return;

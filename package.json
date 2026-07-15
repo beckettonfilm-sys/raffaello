@@ -8,7 +8,8 @@
     "dev": "electron .",
     "export": "node export-to-xlsx.js",
     "import": "node import-from-xlsx.js",
-    "dist": "electron-builder"
+    "dist": "electron-builder",
+    "test": "node --test test/*.test.js"
   },
   "keywords": [],
   "author": "",

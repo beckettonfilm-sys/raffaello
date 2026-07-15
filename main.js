@@ -31,6 +31,10 @@ const {
 const XLSX = require("xlsx");
 const fs = require("fs");
 const { runQobuzScraper } = require("./qobuz_scraper");
+const { SessionManager } = require("./session_manager");
+const { formatRunTimestamp, ensureDir } = require("./output_files");
+const { throwIfAborted, abortableSleep } = require("./abort_utils");
+const sessionManager = new SessionManager();
 
 const SHEET_NAME = "SQLite";
 
@@ -415,9 +419,13 @@ function computeContainmentScore(sourceTokens, targetTokens) {
   return intersection / sourceSet.size;
 }
 
-async function loadLabelLookupFromExcel(appDirectory, { logDiagnostics = false } = {}) {
-  const filePath = getFilesPath(appDirectory, "download", "title_artist_label.xlsx");
-  if (!(await pathExists(filePath))) return [];
+async function loadLabelLookupFromExcel(appDirectory, { logDiagnostics = false, filePath: preferredFilePath } = {}) {
+  const legacyPath = getFilesPath(appDirectory, "download", "title_artist_label.xlsx");
+  const filePath = preferredFilePath || legacyPath;
+  if (!(await pathExists(filePath))) {
+    if (preferredFilePath && await pathExists(legacyPath)) return loadLabelLookupFromExcel(appDirectory, { logDiagnostics, filePath: legacyPath });
+    return [];
+  }
 
   try {
     const workbook = XLSX.readFile(filePath, { cellDates: false });
@@ -480,12 +488,12 @@ async function loadLabelLookupFromExcel(appDirectory, { logDiagnostics = false }
     }
 
     if (logDiagnostics && lookupRows.length > 0 && emptyTitleOrArtistCount / lookupRows.length > 0.8) {
-      console.warn("[LabelMatch] Ostrzeżenie: >80% lookup rows ma pusty title/artist. Sprawdź nagłówki kolumn w title_artist_label.xlsx");
+      console.warn(`[LabelMatch] Ostrzeżenie: >80% lookup rows ma pusty title/artist. Sprawdź nagłówki kolumn w ${path.basename(filePath)}`);
     }
 
     return lookupRows;
   } catch (error) {
-    console.warn("[Import JSON] Nie udało się odczytać title_artist_label.xlsx:", error?.message || error);
+    console.warn(`[Import JSON] Nie udało się odczytać ${path.basename(filePath)}:`, error?.message || error);
     return [];
   }
 }
@@ -1111,6 +1119,7 @@ function registerHandlers() {
           .filter((label) => label && !labelsSet.has(label))
       )
     );
+    if (stagedCoverDir) await fs.promises.rm(stagedCoverDir, { recursive: true, force: true }).catch(() => {});
     return {
       status: "ok",
       file_name: `SQLite / baza danych – tabela '${TABLE_NAME}'`,
@@ -1129,6 +1138,7 @@ function registerHandlers() {
   ipcMain.handle("fetch-filter-presets", async () => {
     await ensureSchema();
     const presets = await fetchFilterPresets();
+    if (stagedCoverDir) await fs.promises.rm(stagedCoverDir, { recursive: true, force: true }).catch(() => {});
     return {
       status: "ok",
       presets
@@ -1161,6 +1171,7 @@ function registerHandlers() {
     await ensureSchema();
     const keys = Array.isArray(payload?.keys) ? payload.keys : [];
     const assignments = await getFilterShortcuts(keys);
+    if (stagedCoverDir) await fs.promises.rm(stagedCoverDir, { recursive: true, force: true }).catch(() => {});
     return {
       status: "ok",
       assignments
@@ -1216,6 +1227,7 @@ function registerHandlers() {
     const count = await replaceAlbums(records);
     await replaceFolderData({ collections, containers, folders, albumFolders });
     const timestamp = Date.now();
+    if (stagedCoverDir) await fs.promises.rm(stagedCoverDir, { recursive: true, force: true }).catch(() => {});
     return {
       status: "ok",
       message: `✅ Zapisano ${count} rekordów w tabeli SQLite / baza danych '${TABLE_NAME}'.`,
@@ -1227,6 +1239,7 @@ function registerHandlers() {
 
   ipcMain.handle("backup-database", async () => {
     const result = await createDatabaseBackup();
+    if (stagedCoverDir) await fs.promises.rm(stagedCoverDir, { recursive: true, force: true }).catch(() => {});
     return {
       status: "ok",
       backupFileName: result.backupFileName,
@@ -1237,6 +1250,7 @@ function registerHandlers() {
 
   ipcMain.handle("check-database", async (_event, payload = {}) => {
     const result = await checkDatabaseRecords({ collectionName: payload?.collectionName });
+    if (stagedCoverDir) await fs.promises.rm(stagedCoverDir, { recursive: true, force: true }).catch(() => {});
     return {
       status: "ok",
       totalRecords: result.totalRecords,
@@ -1486,8 +1500,11 @@ function registerHandlers() {
     const enableLabelMatch = payload?.enableLabelMatch === true;
     const labelMatchDiagnostics = payload?.labelMatchDiagnostics === true;
     const appDirectory = getAppDirectory();
+    const session = payload?.sessionId ? sessionManager.get(payload.sessionId) : null;
+    const importSignal = session?.signal;
+    throwIfAborted(importSignal, session);
     const labelLookupRows = enableLabelMatch
-      ? await loadLabelLookupFromExcel(appDirectory, { logDiagnostics: true })
+      ? await loadLabelLookupFromExcel(appDirectory, { logDiagnostics: true, filePath: payload?.labelXlsxPath })
       : [];
 
     const source = await resolveJsonSourceFile({
@@ -1644,14 +1661,18 @@ function registerHandlers() {
 
     let defaultCoverCount = 0;
 
+    const stagedCoverDir = session ? getFilesPath(appDirectory, ".tmp", "download_nr", session.sessionId) : null;
+    if (stagedCoverDir) await ensureDirectory(stagedCoverDir);
     const importResult = await importJsonAlbums({
       records: albumsToInsert,
       errorAssignments,
       collectionName,
       onBeforeInsert: async (_record, index) => {
+        throwIfAborted(importSignal, session);
         reportProgress(`Importuję album nr ${index} do bazy.`);
       },
       onAfterInsert: async (record, index) => {
+        throwIfAborted(importSignal, session);
         reportProgress(`Pobieram okładki dla albumu nr ${index}.`);
         const usedDefault = await ensureAlbumCovers({
           appDirectory,
@@ -1691,6 +1712,7 @@ function registerHandlers() {
       );
     }
 
+    if (stagedCoverDir) await fs.promises.rm(stagedCoverDir, { recursive: true, force: true }).catch(() => {});
     return {
       status: "ok",
       summary: summaryLines.join("\n"),
@@ -1717,6 +1739,7 @@ function registerHandlers() {
   });
 
   ipcMain.handle("run-qobuz-scraper", async (event, payload = {}) => {
+    let activeSession = null;
     const sendProgress = (progressPayload) => {
       event.sender.send("qobuz-scrape-progress", progressPayload);
     };
@@ -1735,24 +1758,50 @@ function registerHandlers() {
         nextSettings.general.date_from = autoRange.date_from;
         nextSettings.general.date_to = autoRange.date_to;
       }
-      return await runQobuzScraper({
+      activeSession = await sessionManager.create({ mode: payload?.mode || "qobuz-scrape", appRoot: path.resolve(payload?.appRootOverride || getAppDirectory()), runStamp: payload?.runStamp || formatRunTimestamp(new Date()) });
+      sendProgress({ sessionId: activeSession.sessionId, runStamp: activeSession.runStamp, type:"state", level:"info", phase:"init", message:"Rozpoczęto sesję" });
+      const result = await runQobuzScraper({
         appRootOverride: payload?.appRootOverride,
         dryRun: payload?.dryRun === true,
         qobuzSettings: nextSettings,
-        emitProgress: sendProgress
+        emitProgress: sendProgress,
+        session: activeSession,
+        signal: activeSession.signal
       });
+      await sessionManager.cleanup(activeSession.sessionId);
+      return result;
     } catch (error) {
       console.error("[Qobuz Scraper] Błąd:", error);
-      sendProgress({ phase: "error", percent: 100, message: error?.message || "Error" });
+      const cancelled = error?.code === "CANCELLED" || error?.message === "CANCELLED";
+      const stopped = error?.code === "STOP_AND_SAVE" || error?.message === "STOP_AND_SAVE";
+      sendProgress({ sessionId: activeSession?.sessionId, runStamp: activeSession?.runStamp, type:"summary", level: cancelled ? "warning" : "error", phase: cancelled ? "cancelled" : "error", percent: 100, message: cancelled ? "Operacja anulowana. Dane bieżącej sesji nie zostały zapisane." : (error?.message || "Error") });
+      if (activeSession) await sessionManager.cleanup(activeSession.sessionId);
       return {
         ok: false,
         error: {
-          code: error?.code || "UNEXPECTED_ERROR",
+          code: cancelled ? "CANCELLED" : (stopped ? "STOP_AND_SAVE" : (error?.code || "UNEXPECTED_ERROR")),
           message: error?.message || "Nieoczekiwany błąd scrapera Qobuz.",
           details: error?.details || {}
         }
       };
     }
+  });
+
+
+  ipcMain.handle("qobuz-session-stop-and-save", async (_event, payload = {}) => {
+    const session = sessionManager.requestStop(payload?.sessionId);
+    return session ? { status: "ok", sessionId: session.sessionId, state: session.state } : { status: "missing" };
+  });
+
+  ipcMain.handle("qobuz-session-cancel", async (_event, payload = {}) => {
+    const session = sessionManager.requestCancel(payload?.sessionId);
+    return session ? { status: "ok", sessionId: session.sessionId, state: session.state } : { status: "missing" };
+  });
+
+  ipcMain.handle("qobuz-session-state", async (_event, payload = {}) => {
+    const session = sessionManager.get(payload?.sessionId);
+    if (!session) return { status: "missing" };
+    return { status: "ok", session: { sessionId: session.sessionId, runStamp: session.runStamp, mode: session.mode, state: session.state, currentPhase: session.currentPhase, files: session.files, stats: session.stats, timings: session.timings?.snapshot?.() } };
   });
 
   ipcMain.handle("select-directory", async (_event, payload = {}) => {
