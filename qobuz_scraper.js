@@ -129,10 +129,28 @@ async function writeXlsxAtomic({ tempRoot, finalPath, rows }) {
   const targetPath = await ensureUniquePath(finalPath);
   await fs.promises.mkdir(path.dirname(targetPath), { recursive: true });
   await fs.promises.mkdir(tempRoot, { recursive: true });
-  const tmpPath = path.join(tempRoot, `${path.basename(targetPath)}.${process.pid}.${Date.now()}.tmp`);
-  writeXlsx(tmpPath, rows);
-  await moveFileExclusive(tmpPath, targetPath);
-  return targetPath;
+  const parsed = path.parse(targetPath);
+  const extension = parsed.ext || ".xlsx";
+  const tmpPath = path.join(tempRoot, `${parsed.name}.tmp-${process.pid}-${Date.now()}${extension}`);
+  try {
+    writeXlsx(tmpPath, rows);
+    const workbook = XLSX.readFile(tmpPath);
+    if (!workbook.SheetNames.includes("albums")) {
+      throw new Error("Brak arkusza albums w zapisanym XLSX.");
+    }
+    const sheetRows = XLSX.utils.sheet_to_json(workbook.Sheets.albums, { header: 1, blankrows: false });
+    const header = (sheetRows[0] || []).map((value) => String(value || ""));
+    const expected = ["album_title", "main_artists", "label", "album_url", "release_date"];
+    const headersOk = expected.every((name, index) => header[index] === name);
+    if (!headersOk) {
+      throw new Error("Nieprawidłowe nagłówki w zapisanym XLSX.");
+    }
+    await moveFileExclusive(tmpPath, targetPath);
+    return targetPath;
+  } catch (error) {
+    try { await fs.promises.unlink(tmpPath); } catch (_unlinkError) { /* ignore cleanup */ }
+    throw error;
+  }
 }
 
 function buildOutputPaths(outputDir, runStamp, { partial = false } = {}) {
@@ -155,8 +173,34 @@ function makeError(code, message, details = {}) {
   return error;
 }
 
-function sleep(ms) {
-  return new Promise((resolve) => setTimeout(resolve, ms));
+function isAbortError(error) {
+  return error?.name === "AbortError" || error?.code === "ABORT_ERR";
+}
+
+function throwIfSessionStopped(session) {
+  if (session?.cancelRequested) throw makeError("SESSION_CANCELLED", "Operacja anulowana przez użytkownika.");
+  if (session?.stopRequested) return;
+  if (session?.abortController?.signal?.aborted) {
+    if (session.cancelRequested) throw makeError("SESSION_CANCELLED", "Operacja anulowana przez użytkownika.");
+    return;
+  }
+}
+
+function sleep(ms, signal) {
+  if (signal?.aborted) {
+    return Promise.reject(makeError("ABORTED_SLEEP", "Przerwano oczekiwanie."));
+  }
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => {
+      signal?.removeEventListener?.("abort", onAbort);
+      resolve();
+    }, ms);
+    function onAbort() {
+      clearTimeout(timer);
+      reject(makeError("ABORTED_SLEEP", "Przerwano oczekiwanie."));
+    }
+    signal?.addEventListener?.("abort", onAbort, { once: true });
+  });
 }
 
 function parsePlDate(text, fieldName) {
@@ -556,15 +600,21 @@ function writeXlsx(filePath, records) {
     header: ["album_title", "main_artists", "label", "album_url", "release_date"]
   });
   XLSX.utils.book_append_sheet(wb, ws, "albums");
-  XLSX.writeFile(wb, filePath);
+  XLSX.writeFile(wb, filePath, { bookType: "xlsx" });
 }
 
-async function fetchHtml(url, config, stats) {
+async function fetchHtml(url, config, stats, { signal, emitProgress: emit, session, phase = "fetch" } = {}) {
   let lastError = null;
-  for (let attempt = 1; attempt <= config.retries; attempt += 1) {
+  let consecutive429 = 0;
+  const retries = Math.max(1, Number(config.retries || 1));
+  const timeoutMs = Math.max(1000, Number(config.timeout_ms || DEFAULTS.timeout_ms));
+  for (let attempt = 1; attempt <= retries; attempt += 1) {
+    throwIfSessionStopped(session);
     try {
       const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), config.timeout_ms);
+      const timeout = setTimeout(() => controller.abort(), timeoutMs);
+      const onAbort = () => controller.abort();
+      signal?.addEventListener?.("abort", onAbort, { once: true });
       const response = await fetch(url, {
         signal: controller.signal,
         headers: {
@@ -573,21 +623,27 @@ async function fetchHtml(url, config, stats) {
         }
       });
       clearTimeout(timeout);
+      signal?.removeEventListener?.("abort", onAbort);
 
-      if (response.status === 429) {
-        if (attempt < config.retries) {
-          const backoff = 2000 * (2 ** (attempt - 1));
-          console.warn(`[Qobuz Scraper] 429 Too Many Requests: ${url}, retry za ${backoff}ms`);
-          await sleep(backoff);
-          continue;
+      if (response.status === 429 || (response.status >= 500 && response.status < 600)) {
+        const code = response.status === 429 ? "HTTP_429" : `HTTP_${response.status}`;
+        if (response.status === 429) {
+          stats.http429 = (stats.http429 || 0) + 1;
+          consecutive429 += 1;
+        } else {
+          stats.http5xx = (stats.http5xx || 0) + 1;
         }
-      }
-
-      if (response.status >= 500 && response.status < 600) {
-        if (attempt < config.retries) {
-          const backoff = 1000 * (2 ** (attempt - 1));
-          console.warn(`[Qobuz Scraper] HTTP ${response.status}: ${url}, retry za ${backoff}ms`);
-          await sleep(backoff);
+        if (attempt < retries) {
+          const retryAfter = response.headers?.get?.("retry-after");
+          const retryAfterMs = retryAfter ? (Number.isFinite(Number(retryAfter)) ? Number(retryAfter) * 1000 : Math.max(0, Date.parse(retryAfter) - Date.now())) : 0;
+          const base = response.status === 429 ? 2000 : 1000;
+          const dynamic = base * (2 ** (attempt - 1)) * (response.status === 429 ? Math.max(1, consecutive429) : 1);
+          const jitter = 0.85 + (Math.random() * 0.30);
+          const backoff = Math.max(retryAfterMs || 0, Math.round(dynamic * jitter));
+          stats.retries = (stats.retries || 0) + 1;
+          stats.backoffMs = (stats.backoffMs || 0) + backoff;
+          emitSessionProgress(emit, session, { type: "log", level: "warning", code, phase, url, attempt, maxAttempts: retries, retryAfterMs: backoff, message: `Ponowienie za ${backoff} ms [${attempt}/${retries}]` });
+          await sleep(backoff, signal);
           continue;
         }
       }
@@ -595,20 +651,31 @@ async function fetchHtml(url, config, stats) {
       if (response.status !== 200) {
         console.error(`[Qobuz Scraper] HTTP ${response.status}: ${url}`);
         stats.httpErrors += 1;
+        emitSessionProgress(emit, session, { type: "log", level: "error", code: `HTTP_${response.status}`, phase, url, message: `HTTP ${response.status}: ${url}` });
         return null;
       }
-
+      if (consecutive429 > 0) consecutive429 = Math.max(0, consecutive429 - 1);
+      emitSessionProgress(emit, session, { type: "log", level: "info", code: "FETCH_OK", phase, url, message: `Pobrano: ${url}` });
       return await response.text();
     } catch (error) {
       lastError = error;
-      if (attempt >= config.retries) break;
-      const backoff = 1000 * (2 ** (attempt - 1));
-      console.warn(`[Qobuz Scraper] Błąd sieci (${attempt}/${config.retries}): ${error.message}, retry za ${backoff}ms`);
-      await sleep(backoff);
+      if (isAbortError(error) || signal?.aborted || error?.code === "ABORTED_SLEEP") {
+        if (session?.cancelRequested) throw makeError("SESSION_CANCELLED", "Operacja anulowana przez użytkownika.");
+        emitSessionProgress(emit, session, { type: "state", level: "warning", code: "SESSION_STOPPED", phase, message: "Przerwano pobieranie; zapisuję wynik częściowy." });
+        return null;
+      }
+      if (attempt >= retries) break;
+      const backoff = Math.round(1000 * (2 ** (attempt - 1)) * (0.85 + (Math.random() * 0.30)));
+      stats.retries = (stats.retries || 0) + 1;
+      stats.networkErrors = (stats.networkErrors || 0) + 1;
+      stats.backoffMs = (stats.backoffMs || 0) + backoff;
+      emitSessionProgress(emit, session, { type: "log", level: "warning", code: "NETWORK_RETRY", phase, url, attempt, maxAttempts: retries, retryAfterMs: backoff, message: `Błąd sieci: ${error.message}; ponowienie za ${backoff} ms [${attempt}/${retries}]` });
+      await sleep(backoff, signal);
     }
   }
   stats.httpErrors += 1;
   console.error(`[Qobuz Scraper] Nie udało się pobrać ${url}: ${lastError?.message || "unknown"}`);
+  emitSessionProgress(emit, session, { type: "log", level: "error", code: "FETCH_FAILED", phase, url, message: `Nie udało się pobrać ${url}: ${lastError?.message || "unknown"}` });
   return null;
 }
 
@@ -621,6 +688,10 @@ function emitSessionProgress(emit, session, payload) {
   if (event.level === "warning") console.warn(`[Qobuz Scraper] ${event.message}`);
   if (event.level === "error") console.error(`[Qobuz Scraper] ${event.message}`);
   if (event.level !== "warning" && event.level !== "error") console.log(`[Qobuz Scraper] ${event.message}`);
+  if (session) {
+    session.logs = Array.isArray(session.logs) ? session.logs : [];
+    session.logs.push(event);
+  }
   emitProgress(emit, event);
 }
 
@@ -643,6 +714,11 @@ async function runQobuzScraper({ appRootOverride, dryRun = false, qobuzSettings 
     missingAlbumDate: 0,
     duplicatesRemoved: 0,
     httpErrors: 0,
+    http429: 0,
+    http5xx: 0,
+    networkErrors: 0,
+    retries: 0,
+    backoffMs: 0,
     parseErrors: 0
   };
 
@@ -705,6 +781,7 @@ async function runQobuzScraper({ appRootOverride, dryRun = false, qobuzSettings 
   const seenByLabelUrl = new Set();
 
   for (let i = 0; i < labels.length; i += 1) {
+    throwIfSessionStopped(session);
     const label = labels[i];
     stats.labelsProcessed += 1;
     emitSessionProgress(progressEmitter, session, {
@@ -726,7 +803,8 @@ async function runQobuzScraper({ appRootOverride, dryRun = false, qobuzSettings 
       if (page > 1 && config.max_pages_per_label <= 1) break;
       const pageUrl = buildLabelPageUrl(normalized, page);
       console.log(`[Qobuz Scraper] Label=${label.name}, page=${page}/${config.max_pages_per_label}, url=${pageUrl}`);
-      const html = await listingLimiter.schedule(() => fetchHtml(pageUrl, config, stats));
+      throwIfSessionStopped(session);
+      const html = await listingLimiter.schedule(() => fetchHtml(pageUrl, config, stats, { signal: session.abortController.signal, emitProgress: progressEmitter, session, phase: "listing_fetch" }));
       if (!html) continue;
       let extracted;
       try {
@@ -764,6 +842,7 @@ async function runQobuzScraper({ appRootOverride, dryRun = false, qobuzSettings 
   const missingRows = [];
 
   for (let i = 0; i < candidates.length; i += 1) {
+    throwIfSessionStopped(session);
     const cand = candidates[i];
     stats.albumsFetched += 1;
     emitSessionProgress(progressEmitter, session, {
@@ -774,7 +853,7 @@ async function runQobuzScraper({ appRootOverride, dryRun = false, qobuzSettings 
       percent: Math.min(90, 40 + Math.round(((i + 1) / Math.max(1, candidates.length)) * 50))
     });
 
-    const html = await albumLimiter.schedule(() => fetchHtml(cand.album_url, config, stats));
+    const html = await albumLimiter.schedule(() => fetchHtml(cand.album_url, config, stats, { signal: session.abortController.signal, emitProgress: progressEmitter, session, phase: "album_fetch" }));
     if (!html) continue;
     let det;
     try {
@@ -829,13 +908,19 @@ async function runQobuzScraper({ appRootOverride, dryRun = false, qobuzSettings 
   });
   stats.accepted = dedup.length;
 
-  const plannedFiles = buildOutputPaths(outputDir, session.runStamp);
+  const partial = session.stopRequested === true;
+  if (partial) {
+    session.state = "partial";
+    emitSessionProgress(progressEmitter, session, { type: "state", level: "warning", code: "SESSION_STOPPED", phase: "stopping", message: "Przerwij i zapisz: zapisuję pliki PARTIAL." });
+  }
+  const plannedFiles = buildOutputPaths(outputDir, session.runStamp, { partial });
   const writtenFiles = {
     linksTxt: dryRun ? plannedFiles.linksTxt : null,
     xlsx: dryRun ? plannedFiles.xlsx : null,
     missingDatesTxt: dryRun && missingRows.length ? plannedFiles.missingDatesTxt : null,
     reportTxt: dryRun ? plannedFiles.reportTxt : null,
-    reportJson: dryRun ? plannedFiles.reportJson : null
+    reportJson: dryRun ? plannedFiles.reportJson : null,
+    checkpointJson: null
   };
 
   emitSessionProgress(progressEmitter, session, { phase: "writing", percent: 92, message: "Writing outputs..." });
@@ -857,6 +942,15 @@ async function runQobuzScraper({ appRootOverride, dryRun = false, qobuzSettings 
         content: `label\talbum_url\tlisting_release_date\talbum_title\tmain_artists\n${missingRows.join("\n")}\n`
       });
     }
+    const logContent = (session.logs || []).map((entry) => `${entry.timestamp} | ${String(entry.level || "info").toUpperCase()} | ${entry.code || "INFO"} | ${entry.phase || "general"} | ${entry.message || ""}`).join("\n");
+    writtenFiles.logTxt = await writeTextFileAtomic({ tempRoot, finalPath: plannedFiles.logTxt, content: `${logContent}\n` });
+    const report = { status: partial ? "partial" : "success", sessionId: session.sessionId, runStamp: session.runStamp, startedAt: new Date(started).toISOString(), finishedAt: new Date().toISOString(), stats, timings: session.timings, files: writtenFiles };
+    writtenFiles.reportTxt = await writeTextFileAtomic({ tempRoot, finalPath: plannedFiles.reportTxt, content: JSON.stringify(report, null, 2) });
+    writtenFiles.reportJson = await writeTextFileAtomic({ tempRoot, finalPath: plannedFiles.reportJson, content: JSON.stringify(report, null, 2) });
+    if (partial) {
+      const checkpoint = { sessionId: session.sessionId, runStamp: session.runStamp, status: "partial", settings: qobuzSettings, dateRange: { date_from: formatPlDate(config.date_from), date_to: formatPlDate(config.date_to) }, labels, candidates, completedRecords: dedup, pendingRecords: candidates.slice(stats.albumsFetched), lastCompletedIndex: Math.max(0, stats.albumsFetched - 1), stats, timings: session.timings, warnings: (session.logs || []).filter((entry) => entry.level === "warning"), errors: (session.logs || []).filter((entry) => entry.level === "error"), files: writtenFiles };
+      writtenFiles.checkpointJson = await writeTextFileAtomic({ tempRoot, finalPath: plannedFiles.checkpointJson, content: JSON.stringify(checkpoint, null, 2) });
+    }
   }
 
   const finished = Date.now();
@@ -875,7 +969,8 @@ async function runQobuzScraper({ appRootOverride, dryRun = false, qobuzSettings 
     sessionId: session.sessionId,
     runStamp: session.runStamp,
     outputDir,
-    files: writtenFiles,
+    status: partial ? "partial" : "success",
+    files: Object.fromEntries(Object.entries(writtenFiles).map(([key, value]) => [key, value && fs.existsSync(value) ? value : null])),
     stats,
     timing
   };
@@ -885,5 +980,10 @@ module.exports = {
   runQobuzScraper,
   makeError,
   createQobuzSession,
-  formatRunStamp
+  formatRunStamp,
+  writeXlsxAtomic,
+  writeTextFileAtomic,
+  buildOutputPaths,
+  sleep,
+  fetchHtml
 };

@@ -244,6 +244,21 @@ async function isProcessRunning(name) {
   return response.running === true;
 }
 
+async function startDownloadNrSession(payload = {}) {
+  const api = ensureElectronAPI();
+  return api.startDownloadNrSession ? api.startDownloadNrSession(payload) : api.runQobuzScraper({ ...payload, mode: "download-nr" });
+}
+
+async function stopDownloadSession(sessionId) {
+  const api = ensureElectronAPI();
+  return api.stopDownloadSession({ sessionId });
+}
+
+async function cancelDownloadSession(sessionId) {
+  const api = ensureElectronAPI();
+  return api.cancelDownloadSession({ sessionId });
+}
+
 function onImportJsonProgress(handler) {
   const api = ensureElectronAPI();
   if (!handler) return () => {};
@@ -327,6 +342,9 @@ export {
   isProcessRunning,
   onImportJsonProgress,
   onQobuzScrapeProgress,
+  startDownloadNrSession,
+  stopDownloadSession,
+  cancelDownloadSession,
   deleteAlbumAssets,
   checkFileExists
 };

@@ -30,7 +30,17 @@ const {
 } = require("./db");
 const XLSX = require("xlsx");
 const fs = require("fs");
-const { runQobuzScraper } = require("./qobuz_scraper");
+const { runQobuzScraper, createQobuzSession } = require("./qobuz_scraper");
+
+class DownloadSessionManager {
+  constructor() { this.sessions = new Map(); }
+  create(options) { const session = createQobuzSession(options); this.sessions.set(session.sessionId, session); return session; }
+  get(sessionId) { return this.sessions.get(sessionId); }
+  stop(sessionId) { const session = this.get(sessionId); if (!session) return null; session.stopRequested = true; session.state = "stopping"; session.abortController?.abort?.(); return session; }
+  cancel(sessionId) { const session = this.get(sessionId); if (!session) return null; session.cancelRequested = true; session.state = "cancelling"; session.abortController?.abort?.(); return session; }
+  remove(sessionId) { const session = this.get(sessionId); if (session) session.abortController = null; this.sessions.delete(sessionId); }
+}
+const downloadSessions = new DownloadSessionManager();
 
 const SHEET_NAME = "SQLite";
 
@@ -422,7 +432,7 @@ async function resolveLatestLabelLookupPath(appDirectory) {
   try {
     const entries = await fs.promises.readdir(downloadDir, { withFileTypes: true });
     candidates = await Promise.all(entries
-      .filter((entry) => entry.isFile() && /^title_artist_label(?:_PARTIAL)?_\d{2}-\d{2}-\d{4}_\d{2}-\d{2}-\d{2}(?:_\d{2})?\.xlsx$/i.test(entry.name))
+      .filter((entry) => entry.isFile() && /^title_artist_label_\d{2}-\d{2}-\d{4}_\d{2}-\d{2}-\d{2}(?:_\d{2})?\.xlsx$/i.test(entry.name))
       .map(async (entry) => {
         const filePath = path.join(downloadDir, entry.name);
         const stat = await fs.promises.stat(filePath);
@@ -1737,9 +1747,12 @@ function registerHandlers() {
     return { status: "ok" };
   });
 
-  ipcMain.handle("run-qobuz-scraper", async (event, payload = {}) => {
+
+
+  const runQobuzScraperIpc = async (event, payload = {}) => {
     const sendProgress = (progressPayload) => {
       event.sender.send("qobuz-scrape-progress", progressPayload);
+      event.sender.send("download-session-event", progressPayload);
     };
 
     try {
@@ -1756,12 +1769,21 @@ function registerHandlers() {
         nextSettings.general.date_from = autoRange.date_from;
         nextSettings.general.date_to = autoRange.date_to;
       }
-      return await runQobuzScraper({
-        appRootOverride: payload?.appRootOverride,
-        dryRun: payload?.dryRun === true,
-        qobuzSettings: nextSettings,
-        emitProgress: sendProgress
-      });
+      const appRoot = path.resolve(payload?.appRootOverride || getAppDirectory());
+      const session = downloadSessions.create({ appRoot, mode: payload?.mode || "qobuz-scrape", outputDirectory: getFilesPath(appRoot, "download") });
+      sendProgress({ sessionId: session.sessionId, runStamp: session.runStamp, type: "state", level: "info", code: "SESSION_STARTED", phase: "init", message: "Sesja Qobuz rozpoczęta" });
+      try {
+        return await runQobuzScraper({
+          appRootOverride: payload?.appRootOverride,
+          dryRun: payload?.dryRun === true,
+          qobuzSettings: nextSettings,
+          emitProgress: sendProgress,
+          mode: payload?.mode || "qobuz-scrape",
+          session
+        });
+      } finally {
+        downloadSessions.remove(session.sessionId);
+      }
     } catch (error) {
       console.error("[Qobuz Scraper] Błąd:", error);
       sendProgress({ phase: "error", percent: 100, message: error?.message || "Error" });
@@ -1774,92 +1796,32 @@ function registerHandlers() {
         }
       };
     }
+  };
+
+  ipcMain.handle("start-qobuz-session", async (event, payload = {}) => runQobuzScraperIpc(event, { ...payload, mode: "qobuz-scrape" }));
+
+  ipcMain.handle("start-download-nr-session", async (event, payload = {}) => runQobuzScraperIpc(event, { ...payload, mode: "download-nr" }));
+
+  ipcMain.handle("stop-download-session", async (_event, payload = {}) => {
+    const session = downloadSessions.stop(payload?.sessionId);
+    return { status: session ? "ok" : "not-found", sessionId: payload?.sessionId };
   });
 
-  ipcMain.handle("select-directory", async (_event, payload = {}) => {
-    const result = await dialog.showOpenDialog(mainWindow, {
-      properties: ["openDirectory"],
-      title: "Wybierz folder dla operacji danych",
-      defaultPath: payload?.defaultPath
-    });
-    if (result.canceled || !result.filePaths.length) {
-      return { status: "cancelled", error: "Użytkownik anulował wybór" };
+  ipcMain.handle("cancel-download-session", async (_event, payload = {}) => {
+    const session = downloadSessions.cancel(payload?.sessionId);
+    if (session?.paths?.tempRoot) {
+      try { await fs.promises.rm(session.paths.tempRoot, { recursive: true, force: true }); } catch (_error) { /* ignore cleanup */ }
     }
-    return { status: "ok", path: result.filePaths[0] };
+    return { status: session ? "ok" : "not-found", sessionId: payload?.sessionId };
   });
 
-  ipcMain.handle("get-app-directory", () => ({
-    status: "ok",
-    path: getAppDirectory()
-  }));
-
-  ipcMain.handle("select-file", async (_event, payload = {}) => {
-    const { defaultPath, filters } = payload;
-    const result = await dialog.showOpenDialog(mainWindow, {
-      properties: ["openFile"],
-      title: "Wybierz plik danych",
-      defaultPath,
-      filters: filters && Array.isArray(filters) ? filters : [{ name: "Arkusze Excel", extensions: ["xlsx"] }]
-    });
-    if (result.canceled || !result.filePaths.length) {
-      return { status: "cancelled", error: "Użytkownik anulował wybór" };
-    }
-    return { status: "ok", path: result.filePaths[0] };
+  ipcMain.handle("get-download-session-state", async (_event, payload = {}) => {
+    const session = downloadSessions.get(payload?.sessionId);
+    if (!session) return { status: "not-found" };
+    return { status: "ok", session: { sessionId: session.sessionId, runStamp: session.runStamp, state: session.state, stopRequested: session.stopRequested, cancelRequested: session.cancelRequested, currentPhase: session.currentPhase, files: session.files, stats: session.stats, timings: session.timings } };
   });
 
-  ipcMain.handle("resolve-import-file", async (_event, payload = {}) => {
-    const { directory, filePath, prefix } = payload;
-    const source = await resolveSourceFile({ directory, filePath, prefix: prefix || DATA_PREFIXES.importDb });
-    return { status: "ok", filePath: source.path, fileName: source.name };
-  });
-
-  ipcMain.handle("resolve-json-file", async (_event, payload = {}) => {
-    const { directory, filePath } = payload;
-    const source = await resolveJsonSourceFile({ directory, filePath });
-    return { status: "ok", filePath: source.path, fileName: source.name };
-  });
-
-  ipcMain.handle("save-file", async (_event, payload = {}) => {
-    const { directory, fileName, data, binary = true } = payload;
-    if (!fileName) {
-      return { status: "error", error: "Brak nazwy pliku" };
-    }
-    const targetDir = directory || getAppDirectory();
-    await ensureDirectory(targetDir);
-    const filePath = path.join(targetDir, fileName);
-    const buffer = binary ? Buffer.from(data || []) : Buffer.from(String(data ?? ""), "utf8");
-    await fs.promises.writeFile(filePath, buffer);
-    return { status: "ok", filePath };
-  });
-
-  ipcMain.handle("read-text-file", async (_event, payload = {}) => {
-    const { filePath } = payload;
-    if (!filePath) {
-      return { status: "error", error: "Brak ścieżki pliku" };
-    }
-    const normalized = path.resolve(filePath);
-    if (!fs.existsSync(normalized)) {
-      return { status: "error", error: `Nie znaleziono pliku: ${normalized}` };
-    }
-    const contents = await fs.promises.readFile(normalized, "utf8");
-    return { status: "ok", contents };
-  });
-
-  ipcMain.handle("check-file-exists", async (_event, payload = {}) => {
-    const filePath = String(payload?.filePath || "");
-    if (!filePath) {
-      return { status: "error", error: "Brak ścieżki pliku." };
-    }
-    try {
-      await fs.promises.access(filePath, fs.constants.F_OK);
-      return { status: "ok", exists: true };
-    } catch (error) {
-      if (error?.code === "ENOENT") {
-        return { status: "ok", exists: false };
-      }
-      return { status: "error", error: error.message || "Nie udało się sprawdzić pliku." };
-    }
-  });
+  ipcMain.handle("run-qobuz-scraper", runQobuzScraperIpc);
 
   ipcMain.handle("open-external", async (_event, url) => {
     if (!url || typeof url !== "string") return false;

@@ -4461,6 +4461,11 @@ class UiController {
     });
   }
 
+  openDownloadNrProgressModal({ title = "Download NR", message = "" } = {}) {
+    const modal = this.openImportProgressModal({ title, message });
+    return modal;
+  }
+
   openImportProgressModal({ title = "Import danych", message = "" } = {}) {
     document.querySelectorAll(".modal-overlay").forEach((el) => el.remove());
 
@@ -8122,12 +8127,17 @@ class UiController {
     let unsubscribe = () => {};
     try {
       this.startOperation("🕸️ Uruchamiam Qobuz Scraper...");
-      progressModal = this.openImportProgressModal({
+      progressModal = this.openDownloadNrProgressModal({
         title: "Qobuz Scraper",
         message: "Starting..."
       });
+      let activeSessionId = null;
 
       unsubscribe = onQobuzScrapeProgress((payload = {}) => {
+        if (payload.sessionId) {
+          if (!activeSessionId) activeSessionId = payload.sessionId;
+          if (payload.sessionId !== activeSessionId) return;
+        }
         const current = Number(payload.current || 0);
         const total = Number(payload.total || 0);
         let mappedCurrent = current;
@@ -8139,14 +8149,18 @@ class UiController {
         progressModal.update({
           current: mappedCurrent,
           total: mappedTotal,
-          message: payload.message || "Working..."
+          message: `${payload.runStamp ? `${payload.runStamp} | ` : ""}${payload.message || "Working..."}`
         });
       });
 
       const response = await runQobuzScraper({});
       console.log("[Qobuz Scraper] Result:", response);
+      if (response?.status === "partial") {
+        this.showStatusMessage("⚠️ Qobuz scrape przerwany, zapisano PARTIAL");
+        return false;
+      }
       this.showStatusMessage("✅ Qobuz scrape done");
-      return true;
+      return response?.ok === true;
     } catch (error) {
       console.error("[Qobuz Scraper] Error:", error);
       this.showStatusMessage(`❌ Qobuz scrape error: ${error.message}`);

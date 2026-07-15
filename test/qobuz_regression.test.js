@@ -1,0 +1,34 @@
+const assert = require('assert');
+const fs = require('fs');
+const os = require('os');
+const path = require('path');
+const XLSX = require('xlsx');
+const { writeXlsxAtomic, writeTextFileAtomic, buildOutputPaths, formatRunStamp, sleep } = require('../qobuz_scraper');
+
+(async () => {
+  const root = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'qobuz-regression-'));
+  const tempRoot = path.join(root, '.tmp');
+  const output = path.join(root, 'download');
+  await fs.promises.mkdir(output, { recursive: true });
+  const rows = [{ album_title: 'A', main_artists: 'B', label: 'C', album_url: 'https://example.invalid/a', release_date: new Date(Date.UTC(2026, 6, 15)) }];
+  const finalPath = path.join(output, 'title_artist_label_15-07-2026_20-30-00.xlsx');
+  const first = await writeXlsxAtomic({ tempRoot, finalPath, rows });
+  const second = await writeXlsxAtomic({ tempRoot, finalPath, rows });
+  assert.strictEqual(path.basename(first), 'title_artist_label_15-07-2026_20-30-00.xlsx');
+  assert.strictEqual(path.basename(second), 'title_artist_label_15-07-2026_20-30-00_01.xlsx');
+  assert.ok(!fs.readdirSync(tempRoot).some((name) => name.endsWith('.tmp')), 'no .tmp workbook remains');
+  const workbook = XLSX.readFile(first);
+  assert.ok(workbook.SheetNames.includes('albums'));
+  const txt = await writeTextFileAtomic({ tempRoot, finalPath: path.join(output, 'list_links_15-07-2026_20-30-00.txt'), content: 'x\n' });
+  assert.ok(fs.existsSync(txt));
+  const stamp = formatRunStamp(new Date(2026, 6, 15, 20, 30, 0));
+  assert.match(stamp, /^15-07-2026_20-30-00$/);
+  const paths = buildOutputPaths(output, stamp, { partial: true });
+  assert.ok(paths.xlsx.includes('PARTIAL_15-07-2026_20-30-00'));
+  const ac = new AbortController();
+  const sleeper = sleep(10000, ac.signal).then(() => false, () => true);
+  ac.abort();
+  assert.strictEqual(await sleeper, true);
+  await fs.promises.rm(root, { recursive: true, force: true });
+  console.log('qobuz regression tests passed');
+})().catch((error) => { console.error(error); process.exit(1); });
