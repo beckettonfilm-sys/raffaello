@@ -19,11 +19,134 @@ const DEFAULTS = {
   user_agent: "ElectronQobuzScraper/1.0",
 };
 
-const OUTPUT_FILES = {
-  linksTxt: "list_links.txt",
-  xlsx: "title_artist_label.xlsx",
-  missingDatesTxt: "album_date_missing.txt"
+const OUTPUT_FILE_BASES = {
+  linksTxt: "list_links",
+  xlsx: "title_artist_label",
+  missingDatesTxt: "album_date_missing",
+  logTxt: "download_nr_log",
+  reportTxt: "download_nr_report",
+  reportJson: "download_nr_report"
 };
+
+function formatRunStamp(date = new Date()) {
+  const pad = (value) => String(value).padStart(2, "0");
+  return `${pad(date.getDate())}-${pad(date.getMonth() + 1)}-${date.getFullYear()}_${pad(date.getHours())}-${pad(date.getMinutes())}-${pad(date.getSeconds())}`;
+}
+
+function createQobuzSession({ appRoot, mode = "qobuz-scrape", outputDirectory } = {}) {
+  const sessionId = `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+  const runStamp = formatRunStamp();
+  const tempRoot = path.join(appRoot, "FILES", ".tmp", "download-nr", `${runStamp}_${sessionId}`);
+  return {
+    sessionId,
+    runStamp,
+    state: "running",
+    mode,
+    abortController: new AbortController(),
+    stopRequested: false,
+    cancelRequested: false,
+    startedAt: new Date(),
+    paths: {
+      tempRoot,
+      stagedCoverDir: path.join(tempRoot, "covers"),
+      stagedMiniDir: path.join(tempRoot, "pic_mini"),
+      stagedMaxDir: path.join(tempRoot, "pic_max"),
+      outputDirectory
+    },
+    stats: {},
+    timings: {},
+    files: {}
+  };
+}
+
+function buildSessionEvent(session, payload = {}) {
+  return {
+    sessionId: session?.sessionId,
+    runStamp: session?.runStamp,
+    type: payload.type || "progress",
+    level: payload.level || "info",
+    code: payload.code || "INFO",
+    phase: payload.phase || "general",
+    message: payload.message || "",
+    timestamp: new Date().toISOString(),
+    ...payload
+  };
+}
+
+function ensureSessionPath(value, name) {
+  if (!value) {
+    throw new Error(`Brak ${name} dla aktywnej sesji importu.`);
+  }
+  return value;
+}
+
+async function pathExists(targetPath) {
+  try {
+    await fs.promises.access(targetPath, fs.constants.F_OK);
+    return true;
+  } catch (_error) {
+    return false;
+  }
+}
+
+async function ensureUniquePath(filePath) {
+  const parsed = path.parse(filePath);
+  let candidate = filePath;
+  let index = 1;
+  while (await pathExists(candidate)) {
+    candidate = path.join(parsed.dir, `${parsed.name}_${String(index).padStart(2, "0")}${parsed.ext}`);
+    index += 1;
+  }
+  return candidate;
+}
+
+async function moveFileExclusive(sourcePath, targetPath) {
+  try {
+    await fs.promises.rename(sourcePath, targetPath);
+  } catch (error) {
+    if (error?.code === "EXDEV") {
+      await fs.promises.copyFile(sourcePath, targetPath, fs.constants.COPYFILE_EXCL);
+      await fs.promises.unlink(sourcePath);
+      return;
+    }
+    throw error;
+  }
+}
+
+async function writeTextFileAtomic({ tempRoot, finalPath, content }) {
+  ensureSessionPath(tempRoot, "tempRoot");
+  const targetPath = await ensureUniquePath(finalPath);
+  await fs.promises.mkdir(path.dirname(targetPath), { recursive: true });
+  await fs.promises.mkdir(tempRoot, { recursive: true });
+  const tmpPath = path.join(tempRoot, `${path.basename(targetPath)}.${process.pid}.${Date.now()}.tmp`);
+  await fs.promises.writeFile(tmpPath, content, "utf-8");
+  await moveFileExclusive(tmpPath, targetPath);
+  return targetPath;
+}
+
+async function writeXlsxAtomic({ tempRoot, finalPath, rows }) {
+  ensureSessionPath(tempRoot, "tempRoot");
+  const targetPath = await ensureUniquePath(finalPath);
+  await fs.promises.mkdir(path.dirname(targetPath), { recursive: true });
+  await fs.promises.mkdir(tempRoot, { recursive: true });
+  const tmpPath = path.join(tempRoot, `${path.basename(targetPath)}.${process.pid}.${Date.now()}.tmp`);
+  writeXlsx(tmpPath, rows);
+  await moveFileExclusive(tmpPath, targetPath);
+  return targetPath;
+}
+
+function buildOutputPaths(outputDir, runStamp, { partial = false } = {}) {
+  const marker = partial ? `_PARTIAL_${runStamp}` : `_${runStamp}`;
+  return {
+    linksTxt: path.join(outputDir, `${OUTPUT_FILE_BASES.linksTxt}${marker}.txt`),
+    xlsx: path.join(outputDir, `${OUTPUT_FILE_BASES.xlsx}${marker}.xlsx`),
+    missingDatesTxt: path.join(outputDir, `${OUTPUT_FILE_BASES.missingDatesTxt}${marker}.txt`),
+    logTxt: path.join(outputDir, `${OUTPUT_FILE_BASES.logTxt}${marker}.txt`),
+    reportTxt: path.join(outputDir, `${OUTPUT_FILE_BASES.reportTxt}${marker}.txt`),
+    reportJson: path.join(outputDir, `${OUTPUT_FILE_BASES.reportJson}${marker}.json`),
+    checkpointJson: path.join(outputDir, `qobuz_checkpoint${marker}.json`)
+  };
+}
 
 function makeError(code, message, details = {}) {
   const error = new Error(message);
@@ -493,10 +616,20 @@ function emitProgress(emit, payload) {
   if (typeof emit === "function") emit(payload);
 }
 
-async function runQobuzScraper({ appRootOverride, dryRun = false, qobuzSettings = {}, emitProgress: progressEmitter } = {}) {
+function emitSessionProgress(emit, session, payload) {
+  const event = buildSessionEvent(session, payload);
+  if (event.level === "warning") console.warn(`[Qobuz Scraper] ${event.message}`);
+  if (event.level === "error") console.error(`[Qobuz Scraper] ${event.message}`);
+  if (event.level !== "warning" && event.level !== "error") console.log(`[Qobuz Scraper] ${event.message}`);
+  emitProgress(emit, event);
+}
+
+async function runQobuzScraper({ appRootOverride, dryRun = false, qobuzSettings = {}, emitProgress: progressEmitter, mode = "qobuz-scrape", session: providedSession } = {}) {
   const started = Date.now();
   const appRoot = path.resolve(appRootOverride || process.cwd());
   const filesDir = path.join(appRoot, "FILES");
+  const outputDir = path.join(filesDir, "download");
+  const session = providedSession || createQobuzSession({ appRoot, mode, outputDirectory: outputDir });
 
   const stats = {
     labelsTotal: 0,
@@ -513,7 +646,8 @@ async function runQobuzScraper({ appRootOverride, dryRun = false, qobuzSettings 
     parseErrors: 0
   };
 
-  emitProgress(progressEmitter, { phase: "init", percent: 1, message: "Reading settings..." });
+  session.stats = stats;
+  emitSessionProgress(progressEmitter, session, { phase: "init", percent: 1, message: "Reading settings..." });
   const general = qobuzSettings?.general || {};
   const config = {
     ...DEFAULTS,
@@ -557,7 +691,7 @@ async function runQobuzScraper({ appRootOverride, dryRun = false, qobuzSettings 
     genre_root: config.genre_root
   });
 
-  emitProgress(progressEmitter, { phase: "labels", percent: 3, message: "Loading labels..." });
+  emitSessionProgress(progressEmitter, session, { phase: "labels", percent: 3, message: "Loading labels..." });
   const labels = (Array.isArray(qobuzSettings?.labels) ? qobuzSettings.labels : [])
     .filter((label) => Number(label?.is_active) === 1)
     .map((label) => ({ name: String(label?.name || "").trim(), url: String(label?.url || "").trim() }))
@@ -573,7 +707,7 @@ async function runQobuzScraper({ appRootOverride, dryRun = false, qobuzSettings 
   for (let i = 0; i < labels.length; i += 1) {
     const label = labels[i];
     stats.labelsProcessed += 1;
-    emitProgress(progressEmitter, {
+    emitSessionProgress(progressEmitter, session, {
       phase: "listing",
       message: `Scraping label ${i + 1}/${labels.length}: ${label.name}`,
       current: i + 1,
@@ -585,7 +719,7 @@ async function runQobuzScraper({ appRootOverride, dryRun = false, qobuzSettings 
     try {
       normalized = normalizeLabelBase(label.url);
     } catch (error) {
-      console.warn(`[Qobuz Scraper] Pomijam label z nieprawidłowym linkiem: ${label.name} (${label.url})`);
+      emitSessionProgress(progressEmitter, session, { phase: "listing", level: "warning", code: "INVALID_LABEL_URL", message: `Pomijam label z nieprawidłowym linkiem: ${label.name} (${label.url})` });
       continue;
     }
     for (let page = 1; page <= config.max_pages_per_label; page += 1) {
@@ -606,7 +740,7 @@ async function runQobuzScraper({ appRootOverride, dryRun = false, qobuzSettings 
         );
       } catch (error) {
         stats.parseErrors += 1;
-        console.error(`[Qobuz Scraper] Błąd parsowania listingu ${pageUrl}: ${error.message}`);
+        emitSessionProgress(progressEmitter, session, { phase: "listing", level: "error", code: "LISTING_PARSE_ERROR", message: `Błąd parsowania listingu ${pageUrl}: ${error.message}` });
         continue;
       }
 
@@ -632,7 +766,7 @@ async function runQobuzScraper({ appRootOverride, dryRun = false, qobuzSettings 
   for (let i = 0; i < candidates.length; i += 1) {
     const cand = candidates[i];
     stats.albumsFetched += 1;
-    emitProgress(progressEmitter, {
+    emitSessionProgress(progressEmitter, session, {
       phase: "albums",
       message: `Fetching album ${i + 1}/${candidates.length}`,
       current: i + 1,
@@ -647,7 +781,7 @@ async function runQobuzScraper({ appRootOverride, dryRun = false, qobuzSettings 
       det = parseAlbumDetails(html);
     } catch (error) {
       stats.parseErrors += 1;
-      console.error(`[Qobuz Scraper] Błąd parsowania albumu ${cand.album_url}: ${error.message}`);
+      emitSessionProgress(progressEmitter, session, { phase: "albums", level: "error", code: "ALBUM_PARSE_ERROR", message: `Błąd parsowania albumu ${cand.album_url}: ${error.message}` });
       continue;
     }
     if (!det) continue;
@@ -695,50 +829,61 @@ async function runQobuzScraper({ appRootOverride, dryRun = false, qobuzSettings 
   });
   stats.accepted = dedup.length;
 
-  const outputDir = path.join(filesDir, "download");
-  const linksTxt = path.join(outputDir, OUTPUT_FILES.linksTxt);
-  const xlsxPath = path.join(outputDir, OUTPUT_FILES.xlsx);
-  const missingPath = path.join(outputDir, OUTPUT_FILES.missingDatesTxt);
+  const plannedFiles = buildOutputPaths(outputDir, session.runStamp);
+  const writtenFiles = {
+    linksTxt: dryRun ? plannedFiles.linksTxt : null,
+    xlsx: dryRun ? plannedFiles.xlsx : null,
+    missingDatesTxt: dryRun && missingRows.length ? plannedFiles.missingDatesTxt : null,
+    reportTxt: dryRun ? plannedFiles.reportTxt : null,
+    reportJson: dryRun ? plannedFiles.reportJson : null
+  };
 
-  emitProgress(progressEmitter, { phase: "writing", percent: 92, message: "Writing outputs..." });
+  emitSessionProgress(progressEmitter, session, { phase: "writing", percent: 92, message: "Writing outputs..." });
   if (!dryRun) {
-    fs.mkdirSync(outputDir, { recursive: true });
-    writeLinksTxt(linksTxt, dedup.map((row) => row.album_url));
-    emitProgress(progressEmitter, { phase: "writing", percent: 96, message: "Writing XLSX..." });
-    writeXlsx(xlsxPath, dedup);
+    const tempRoot = ensureSessionPath(session?.paths?.tempRoot, "tempRoot");
+    const outputDirectory = ensureSessionPath(session?.paths?.outputDirectory, "outputDirectory");
+    await fs.promises.mkdir(outputDirectory, { recursive: true });
+    writtenFiles.linksTxt = await writeTextFileAtomic({
+      tempRoot,
+      finalPath: plannedFiles.linksTxt,
+      content: `${dedup.map((row) => row.album_url).join("\n")}\n`
+    });
+    emitSessionProgress(progressEmitter, session, { phase: "writing", percent: 96, code: "WRITE_XLSX", message: "Writing XLSX..." });
+    writtenFiles.xlsx = await writeXlsxAtomic({ tempRoot, finalPath: plannedFiles.xlsx, rows: dedup });
     if (missingRows.length) {
-      fs.writeFileSync(
-        missingPath,
-        `label\talbum_url\tlisting_release_date\talbum_title\tmain_artists\n${missingRows.join("\n")}\n`,
-        "utf-8"
-      );
-    } else if (fs.existsSync(missingPath)) {
-      fs.unlinkSync(missingPath);
+      writtenFiles.missingDatesTxt = await writeTextFileAtomic({
+        tempRoot,
+        finalPath: plannedFiles.missingDatesTxt,
+        content: `label\talbum_url\tlisting_release_date\talbum_title\tmain_artists\n${missingRows.join("\n")}\n`
+      });
     }
   }
 
   const finished = Date.now();
-  emitProgress(progressEmitter, { phase: "done", percent: 100, message: "Done" });
+  const timing = {
+    startedAt: new Date(started).toISOString(),
+    finishedAt: new Date(finished).toISOString(),
+    durationMs: finished - started
+  };
+  session.timings.total = timing;
+  session.files = writtenFiles;
+  emitSessionProgress(progressEmitter, session, { phase: "done", level: "success", percent: 100, message: "Done" });
   console.log("[Qobuz Scraper] Podsumowanie:", stats);
 
   return {
     ok: true,
+    sessionId: session.sessionId,
+    runStamp: session.runStamp,
     outputDir,
-    files: {
-      linksTxt,
-      xlsx: xlsxPath,
-      missingDatesTxt: missingRows.length ? missingPath : null
-    },
+    files: writtenFiles,
     stats,
-    timing: {
-      startedAt: new Date(started).toISOString(),
-      finishedAt: new Date(finished).toISOString(),
-      durationMs: finished - started
-    }
+    timing
   };
 }
 
 module.exports = {
   runQobuzScraper,
-  makeError
+  makeError,
+  createQobuzSession,
+  formatRunStamp
 };

@@ -415,9 +415,30 @@ function computeContainmentScore(sourceTokens, targetTokens) {
   return intersection / sourceSet.size;
 }
 
+async function resolveLatestLabelLookupPath(appDirectory) {
+  const downloadDir = getFilesPath(appDirectory, "download");
+  const legacyPath = path.join(downloadDir, "title_artist_label.xlsx");
+  let candidates = [];
+  try {
+    const entries = await fs.promises.readdir(downloadDir, { withFileTypes: true });
+    candidates = await Promise.all(entries
+      .filter((entry) => entry.isFile() && /^title_artist_label(?:_PARTIAL)?_\d{2}-\d{2}-\d{4}_\d{2}-\d{2}-\d{2}(?:_\d{2})?\.xlsx$/i.test(entry.name))
+      .map(async (entry) => {
+        const filePath = path.join(downloadDir, entry.name);
+        const stat = await fs.promises.stat(filePath);
+        return { filePath, mtimeMs: stat.mtimeMs };
+      }));
+  } catch (_error) {
+    candidates = [];
+  }
+  candidates.sort((left, right) => right.mtimeMs - left.mtimeMs);
+  if (candidates[0]?.filePath) return candidates[0].filePath;
+  return (await pathExists(legacyPath)) ? legacyPath : "";
+}
+
 async function loadLabelLookupFromExcel(appDirectory, { logDiagnostics = false } = {}) {
-  const filePath = getFilesPath(appDirectory, "download", "title_artist_label.xlsx");
-  if (!(await pathExists(filePath))) return [];
+  const filePath = await resolveLatestLabelLookupPath(appDirectory);
+  if (!filePath) return [];
 
   try {
     const workbook = XLSX.readFile(filePath, { cellDates: false });
