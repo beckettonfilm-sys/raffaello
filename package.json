@@ -6,6 +6,7 @@
   "scripts": {
     "start": "electron .",
     "dev": "electron .",
+    "test": "node --test",
     "export": "node export-to-xlsx.js",
     "import": "node import-from-xlsx.js",
     "dist": "electron-builder"

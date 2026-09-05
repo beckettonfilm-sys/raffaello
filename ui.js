@@ -8098,7 +8098,11 @@ class UiController {
       const fileName = response?.fileName || selection.fileName || "import.json";
 
       await this.reloadFromDatabase(false);
-      this.selectOnlyLabel("unknown");
+      const affectedLabels = Array.isArray(response?.affectedLabels) ? response.affectedLabels : [];
+      affectedLabels.forEach((label) => this.uiState.selectedLabels.add(label));
+      this.store.setLabelSelection(this.uiState.selectedLabels);
+      this.refreshLabelsGrid();
+      this.processAndRender();
       this.uiState.pendingStatusMessage = summary.split("\n")[0];
       modalMessage = `${summary}\n📄 Plik: ${fileName}\n📂 Folder: ${directory}`;
     } catch (error) {
