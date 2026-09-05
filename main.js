@@ -31,6 +31,12 @@ const {
 const XLSX = require("xlsx");
 const fs = require("fs");
 const { runQobuzScraper } = require("./qobuz_scraper");
+const {
+  addLabelsToHierarchy,
+  getLabelNameFromHierarchy,
+  resolveImportedLabel,
+  sanitizeJsonLabel
+} = require("./json-labels");
 
 const SHEET_NAME = "SQLite";
 
@@ -600,12 +606,6 @@ async function loadLabelHierarchy() {
   } catch (error) {
     return [...DEFAULT_LABEL_HIERARCHY];
   }
-}
-
-function getLabelNameFromHierarchy(entry) {
-  const parts = String(entry || "").split(" - ");
-  parts.shift();
-  return parts.join(" - ").trim();
 }
 
 function buildUrlWithSize(url, targetSize) {
@@ -1524,6 +1524,7 @@ function registerHandlers() {
       throw new Error("Przekroczono maksymalną liczbę albumów (999999).");
     }
     const albumsToInsert = [];
+    const duplicateLabelUpdates = [];
     const errorAssignments = [];
     const missingCounts = {
       TIDAL_LINK: 0,
@@ -1547,6 +1548,7 @@ function registerHandlers() {
       const duration = parseJsonDuration(record?.duration);
       const releaseDate = parseJsonReleaseDate(record?.releaseDate);
       const picture = sanitizeJsonText(record?.picture);
+      const jsonLabel = sanitizeJsonLabel(record?.label);
 
       const missingFields = [];
       if (!link) missingFields.push("TIDAL_LINK");
@@ -1579,6 +1581,8 @@ function registerHandlers() {
       }
 
       if (isDuplicate) {
+        const albumId = tidalId ? tidalIdMap.get(tidalId) : linkMap.get(link);
+        if (albumId && jsonLabel) duplicateLabelUpdates.push({ albumId, label: jsonLabel });
         return;
       }
 
@@ -1588,7 +1592,7 @@ function registerHandlers() {
         incomplete += 1;
       }
 
-      const matchedLabel = enableLabelMatch
+      const matchedLabel = !jsonLabel && enableLabelMatch
         ? resolveLabelForRecord({
             title,
             artist,
@@ -1605,7 +1609,7 @@ function registerHandlers() {
         RATING: 0,
         BOOKLET: 0,
         CD_BACK: 0,
-        LABEL: matchedLabel || "unknown",
+        LABEL: resolveImportedLabel(jsonLabel, matchedLabel),
         TIDAL_LINK: link,
         FORMAT: "TIDAL streaming",
         ROON_ID: String(nextId).padStart(6, "0"),
@@ -1624,7 +1628,11 @@ function registerHandlers() {
       });
 
       if (link) existingLinks.add(link);
-      if (tidalId) existingTidalIds.add(tidalId);
+      if (link) linkMap.set(link, nextId);
+      if (tidalId) {
+        existingTidalIds.add(tidalId);
+        tidalIdMap.set(tidalId, nextId);
+      }
       nextId += 1;
       nextOrder += 1;
     });
@@ -1646,6 +1654,7 @@ function registerHandlers() {
 
     const importResult = await importJsonAlbums({
       records: albumsToInsert,
+      labelUpdates: duplicateLabelUpdates,
       errorAssignments,
       collectionName,
       onBeforeInsert: async (_record, index) => {
@@ -1663,6 +1672,14 @@ function registerHandlers() {
     });
 
     const inserted = Number(importResult?.inserted || 0);
+    const importedLabels = albumsToInsert.map((record) => record.LABEL).filter((label) => label && label !== "unknown");
+    const updatedLabels = Array.isArray(importResult?.updatedLabels) ? importResult.updatedLabels : [];
+    await addLabelsToHierarchy(
+      path.join(appDirectory, "labels.txt"),
+      [...importedLabels, ...updatedLabels],
+      DEFAULT_LABEL_HIERARCHY
+    );
+    const affectedLabels = Array.from(new Set([...importedLabels, ...updatedLabels]));
     const errorContainerName = importResult?.errorContainerName;
     const errorFoldersCreated = Number(importResult?.errorFoldersCreated || 0);
     const errorAssignmentsInserted = Number(importResult?.errorAssignmentsInserted || 0);
@@ -1675,6 +1692,7 @@ function registerHandlers() {
 
     if (incomplete) summaryLines.push(`⚠️ Niekompletne dane: ${incomplete}`);
     if (duplicates) summaryLines.push(`🟡 Duplikaty (ID_TIDAL): ${duplicates}`);
+    if (updatedLabels.length) summaryLines.push(`🏷️ Uzupełnione wytwórnie duplikatów: ${updatedLabels.length}`);
 
     Object.entries(missingCounts).forEach(([field, count]) => {
       if (count) summaryLines.push(`🔸 Brak ${field}: ${count}`);
@@ -1698,6 +1716,7 @@ function registerHandlers() {
       filePath: source.path,
       inserted,
       duplicates,
+      affectedLabels,
       missingCounts,
       errorContainerName,
       errorFoldersCreated

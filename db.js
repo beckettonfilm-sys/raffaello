@@ -1268,6 +1268,7 @@ async function assignErrorFolders(db, { errorAssignments = [], collectionName, n
 
 async function importJsonAlbums({
   records = [],
+  labelUpdates = [],
   errorAssignments = [],
   collectionName,
   onBeforeInsert,
@@ -1276,6 +1277,7 @@ async function importJsonAlbums({
   const db = await getDatabase();
   const result = {
     inserted: 0,
+    updatedLabels: [],
     errorContainerName: null,
     errorFoldersCreated: 0,
     errorAssignmentsInserted: 0
@@ -1284,6 +1286,21 @@ async function importJsonAlbums({
 
   await run(db, "BEGIN TRANSACTION");
   try {
+    for (const update of labelUpdates) {
+      const albumId = Number(update?.albumId);
+      const label = typeof update?.label === "string" ? update.label.trim() : "";
+      if (!Number.isFinite(albumId) || albumId <= 0 || !label) continue;
+      const statement = await run(
+        db,
+        `UPDATE "${TABLE_NAME}"
+         SET label = ?
+         WHERE id_albumu = ?
+           AND (label IS NULL OR TRIM(label) = '' OR LOWER(TRIM(label)) = 'unknown')`,
+        [label, albumId]
+      );
+      if (statement?.changes) result.updatedLabels.push(label);
+    }
+
     if (records.length) {
       const dataColumns = COLUMN_MAP.map((c) => `"${c.column}"`);
       const columns = [...dataColumns, '"row_order"'];
