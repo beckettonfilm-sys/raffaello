@@ -48,4 +48,17 @@
 48C - Berliner Philharmoniker
 49C - Delos
 50C - Dacapo
+51C - CORO
+52C - Polyrhythms
+53C - L’Auditori
+54C - Steinway & Sons
+55C - Deux-Elles Limited
+56C - Artway
+57C - Eudora Records
+58C - SUPRAPHON a.s.
+59C - La Dolce Volta
+60C - Neue Meister
+61C - Silent Beat Records
+62C - Prospero Classical
+63C - GENUIN
 99Z - unknown
